@@ -1,0 +1,153 @@
+// DataPilot AI — Prisma schema
+// This defines the production data model for PostgreSQL. The demo app running
+// in this environment uses an in-memory store (see src/store/use-app-store.ts)
+// so it works without a database connection; wire these models up behind
+// src/app/api/* routes to move from demo mode to a real deployment.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum TaskStatus {
+  queued
+  running
+  paused
+  completed
+  failed
+  cancelled
+}
+
+enum StageStatus {
+  pending
+  active
+  done
+  error
+}
+
+enum ConnectorType {
+  api
+  web
+  file
+  database
+}
+
+model Connector {
+  id                 String   @id @default(cuid())
+  name               String
+  type               ConnectorType
+  status             String   @default("idle")
+  reliability        Int      @default(90)
+  createdAt          DateTime @default(now())
+  records            Record[]
+  taskConnectors     TaskConnector[]
+}
+
+model Task {
+  id                String       @id @default(cuid())
+  prompt            String
+  status            TaskStatus   @default(queued)
+  progress          Int          @default(0)
+  recordsFound      Int          @default(0)
+  duplicatesRemoved Int          @default(0)
+  isDemo            Boolean      @default(true)
+  createdAt         DateTime     @default(now())
+  updatedAt         DateTime     @updatedAt
+
+  intent            Intent?
+  stages            Stage[]
+  connectors        TaskConnector[]
+  dataset           Dataset?
+  workflow          Workflow?
+
+  @@index([status])
+  @@index([createdAt])
+}
+
+model Intent {
+  id          String   @id @default(cuid())
+  taskId      String   @unique
+  task        Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  goal        String
+  entityType  String
+  location    String?
+  industry    String?
+  fields      String[]
+  constraints String[]
+  confidence  Float
+}
+
+model Stage {
+  id          String      @id @default(cuid())
+  taskId      String
+  task        Task        @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  stageId     String // interpret | plan | collect | validate | deduplicate | deliver
+  label       String
+  description String
+  status      StageStatus @default(pending)
+  progress    Int         @default(0)
+  logs        String[]
+  order       Int
+  durationMs  Int?
+
+  @@index([taskId])
+}
+
+model TaskConnector {
+  id          String    @id @default(cuid())
+  taskId      String
+  task        Task      @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  connectorId String
+  connector   Connector @relation(fields: [connectorId], references: [id])
+
+  @@unique([taskId, connectorId])
+}
+
+model Dataset {
+  id          String   @id @default(cuid())
+  taskId      String   @unique
+  task        Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  name        String
+  prompt      String
+  columns     String[]
+  sourcesUsed String[]
+  createdAt   DateTime @default(now())
+  records     Record[]
+
+  @@index([createdAt])
+}
+
+model Record {
+  id          String    @id @default(cuid())
+  datasetId   String
+  dataset     Dataset   @relation(fields: [datasetId], references: [id], onDelete: Cascade)
+  fields      Json
+  confidence  Float
+  flagged     Boolean   @default(false)
+  sourceName  String
+  sourceUrl   String
+  connectorId String?
+  connector   Connector? @relation(fields: [connectorId], references: [id])
+  collectedAt DateTime  @default(now())
+
+  @@index([datasetId])
+  @@index([confidence])
+}
+
+model Workflow {
+  id         String   @id @default(cuid())
+  taskId     String?  @unique
+  task       Task?    @relation(fields: [taskId], references: [id])
+  name       String
+  prompt     String
+  stages     String[]
+  connectors String[]
+  usageCount Int      @default(1)
+  createdAt  DateTime @default(now())
+
+  @@index([createdAt])
+}
