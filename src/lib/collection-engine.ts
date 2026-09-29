@@ -1,4 +1,4 @@
-import type { Connector, DataTask, ExtractedIntent, StageId, WorkflowStage } from "@/types";
+import type { Connector, ExtractedIntent, StageId, WorkflowStage } from "@/types";
 
 export const CONNECTORS: Connector[] = [
   { id: "web-search", name: "Curated Web Index", type: "web", status: "active", recordsContributed: 0, reliability: 92, icon: "globe" },
@@ -7,16 +7,15 @@ export const CONNECTORS: Connector[] = [
   { id: "social-directory", name: "Public Directory", type: "web", status: "active", recordsContributed: 0, reliability: 79, icon: "users" },
   { id: "csr-database", name: "CSR / Sustainability DB", type: "database", status: "active", recordsContributed: 0, reliability: 94, icon: "leaf" },
   { id: "job-boards", name: "Startup & Tech Index", type: "api", status: "active", recordsContributed: 0, reliability: 90, icon: "briefcase" },
-  { id: "csv-upload", name: "Uploaded Files", type: "file", status: "idle", recordsContributed: 0, reliability: 100, icon: "file" },
 ];
 
 export const STAGE_META: Record<StageId, { label: string; description: string }> = {
-  interpret: { label: "Interpret", description: "Parsing the prompt into structured intent" },
-  plan: { label: "Plan", description: "Designing a task-specific collection workflow" },
-  collect: { label: "Collect", description: "Running connectors against permitted sources" },
-  validate: { label: "Validate", description: "Checking field completeness and formats" },
-  deduplicate: { label: "Deduplicate", description: "Merging near-identical records" },
-  deliver: { label: "Deliver", description: "Publishing the dataset to your workspace" },
+  interpret: { label: "Interpret", description: "Understanding what you're looking for" },
+  plan: { label: "Plan", description: "Choosing which sources this question needs" },
+  collect: { label: "Collect", description: "Gathering matching organizations" },
+  validate: { label: "Validate", description: "Checking links, emails and completeness" },
+  deduplicate: { label: "Deduplicate", description: "Merging duplicate organizations" },
+  deliver: { label: "Deliver", description: "Building your dataset" },
 };
 
 export function buildInitialStages(): WorkflowStage[] {
@@ -105,22 +104,5 @@ export function intentConfidence(locFound: boolean, fieldsCount: number, entityC
   return Math.round(Math.min(0.97, c) * 100) / 100;
 }
 
-export const DEMO_PROMPT =
+export const SAMPLE_PROMPT =
   "Find sustainability-focused sponsor leads for a college technology festival in Pune. Include company name, website, industry, location and contact information.";
-
-export function createTaskShell(prompt: string): DataTask {
-  return {
-    id: `task_${Math.random().toString(36).slice(2, 10)}`,
-    prompt,
-    createdAt: new Date().toISOString(),
-    status: "queued",
-    intent: null,
-    stages: buildInitialStages(),
-    connectors: [],
-    recordsFound: 0,
-    duplicatesRemoved: 0,
-    datasetId: null,
-    progress: 0,
-    isDemo: false,
-  };
-}

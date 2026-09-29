@@ -84,16 +84,16 @@ export default function TaskDetailPage() {
 
   if (!task && !missing) {
     return (
-      <div className="flex items-center justify-center py-24 text-sm text-muted">Loading task…</div>
+      <div className="flex items-center justify-center py-24 text-sm text-muted">Loading request…</div>
     );
   }
 
   if (!task) {
     return (
       <div className="flex flex-col items-center justify-center py-24 text-center">
-        <p className="text-sm text-muted">This task doesn&apos;t exist.</p>
+        <p className="text-sm text-muted">This request doesn&apos;t exist.</p>
         <Button variant="gradient" className="mt-4" asChild>
-          <Link href="/tasks/new">Start a new task</Link>
+          <Link href="/tasks/new">Ask a new question</Link>
         </Button>
       </div>
     );
@@ -104,7 +104,7 @@ export default function TaskDetailPage() {
       const newId = await api.rerunTask(task.id);
       router.push(`/tasks/${newId}`);
     } catch {
-      toast.error("Could not rerun the task");
+      toast.error("Could not rerun this request");
     }
   };
 
@@ -112,7 +112,7 @@ export default function TaskDetailPage() {
     <div className="space-y-6">
       <div>
         <Link href="/dashboard" className="mb-4 inline-flex items-center gap-1.5 text-xs text-muted transition-colors hover:text-foreground">
-          <ArrowLeft className="h-3.5 w-3.5" /> Back to dashboard
+          <ArrowLeft className="h-3.5 w-3.5" /> Back to mission control
         </Link>
 
         <div className="flex flex-wrap items-start justify-between gap-4">
@@ -152,7 +152,7 @@ export default function TaskDetailPage() {
         <div className="lg:col-span-3">
           <Card>
             <CardHeader>
-              <CardTitle>Workflow execution</CardTitle>
+              <CardTitle>Pipeline progress</CardTitle>
             </CardHeader>
             <CardContent className="pt-1">
               {task.stages.map((stage, i) => (
@@ -167,11 +167,11 @@ export default function TaskDetailPage() {
 
           {task.recordsFound > 0 && (
             <Card className="p-5">
-              <p className="mb-3 text-xs font-medium text-muted">Live counters</p>
+              <p className="mb-3 text-xs font-medium text-muted">Collected so far</p>
               <div className="grid grid-cols-2 gap-3 text-sm">
                 <div>
                   <p className="mono-tabular text-lg font-semibold text-foreground">{task.recordsFound}</p>
-                  <p className="text-[11px] text-muted-2">records</p>
+                  <p className="text-[11px] text-muted-2">records verified</p>
                 </div>
                 <div>
                   <p className="mono-tabular text-lg font-semibold text-foreground">{task.duplicatesRemoved}</p>
@@ -189,7 +189,7 @@ export default function TaskDetailPage() {
             <CardHeader>
               <div className="flex items-center gap-2">
                 <PartyPopper className="h-4 w-4 text-success" />
-                <CardTitle>Dataset ready</CardTitle>
+                <CardTitle>Dataset ready to use</CardTitle>
               </div>
             </CardHeader>
             <CardContent>

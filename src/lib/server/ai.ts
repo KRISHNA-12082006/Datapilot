@@ -1,5 +1,5 @@
 import type { ExtractedIntent } from "@/types";
-import { extractIntent as extractIntentHeuristic } from "@/lib/demo-engine";
+import { extractIntent as extractIntentHeuristic } from "@/lib/collection-engine";
 
 const SYSTEM_PROMPT = `You extract structured data-collection intent from a plain-English request.
 Respond with ONLY a JSON object (no markdown, no prose) matching this exact shape:
@@ -20,8 +20,8 @@ prompt. Keep it concise.`;
  * Extracts intent from a prompt. If OPENROUTER_API_KEY (or legacy AI_API_KEY)
  * is configured, this calls the OpenRouter chat-completions API for real
  * LLM-based extraction. Otherwise (and on any failure, so the product never
- * hard-fails a demo) it falls back to the deterministic local NLP in
- * demo-engine.ts.
+ * hard-fails a request) it falls back to the deterministic local NLP in
+ * collection-engine.ts.
  *
  * Free/offline-safe models that work well here (set AI_MODEL to override):
  * - "x-ai/grok-4.1-fast:free" (default — free tier, JSON-friendly)

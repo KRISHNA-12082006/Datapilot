@@ -1,14 +1,15 @@
 # DataPilot AI
 
-An AI-powered data intelligence platform, built for hackathon demonstration.
+An AI-powered data intelligence platform: turn a plain-English business question into a
+clean, validated, source-backed dataset you can actually act on.
 
-Turn a plain-English request into a clean, validated, source-backed dataset:
+Turn a plain-English business question into a clean, validated, source-backed dataset:
 
 ```
-Prompt → AI Intent → Dynamic Workflow → Multi-Source Collection → Validation → Deduplication → Dataset → Analytics → Export
+Question → AI Intent → Dynamic Workflow → Source Collection → Validation → Deduplication → Dataset → Analytics → Export
 ```
 
-DataPilot is a **dynamic workflow builder**, not a fixed scraper — every request is parsed
+DataPilot is a **dynamic workflow builder**, not a fixed scraper — every question is parsed
 into structured intent, and a task-specific collection workflow is generated and executed
 live, with full source provenance on every record.
 
@@ -18,7 +19,7 @@ live, with full source provenance on every record.
 - **Tailwind CSS v4** + hand-built shadcn/ui-style component library
 - **Framer Motion** for page/element animation
 - **React Three Fiber** + **Drei** + **Three.js** for the 3D data-network hero visualization
-- **Zustand** for client state (drives the live pipeline simulation)
+- **Zustand** for client state (caches API data across app views)
 - **Recharts** for dataset analytics
 - **cmdk** for the command palette (`⌘K` / `Ctrl+K`)
 - **PostgreSQL** via `pg`, with the schema documented in `prisma/schema.prisma`
@@ -53,14 +54,14 @@ Production check: `npm run build && npm start`.
   `OPENROUTER_API_KEY` (or legacy `AI_API_KEY`) is set — default model `x-ai/grok-4.1-fast:free`
   costs nothing; otherwise (or on any failure) falls back to deterministic local NLP.
 
-### What is real and what is simulated
+### What is real
 
 | Part | Status |
 |---|---|
 | PostgreSQL storage, REST API, task control (pause/resume/cancel/rerun) | Real |
 | Live progress, dataset explorer, analytics, CSV/JSON export | Real, reading from the DB |
 | Intent extraction | Real LLM via OpenRouter if `OPENROUTER_API_KEY` is set, else deterministic local NLP (offline-safe) |
-| **Data collection** | **Real**: curated corpus of 24 verified orgs (real names, real URLs), ranked per prompt |
+| **Data collection** | **Real**: curated corpus of 24 verified orgs (real names, real URLs), ranked per question |
 | **Validation / dedupe / confidence** | **Real + deterministic**: URL/email/completeness checks, normalized-key dedupe, evidence-based scores |
 
 ### Known limitations
@@ -78,11 +79,11 @@ Production check: `npm run build && npm start`.
 |---|---|
 | `/` | Landing page with 3D hero, pipeline explainer, features |
 | `/dashboard` | Stats overview + recent tasks |
-| `/tasks/new` | Prompt input + example requests |
-| `/tasks/[id]` | Live pipeline execution, intent, connectors, results preview |
+| `/tasks/new` | Ask a business question + example requests |
+| `/tasks/[id]` | Live pipeline execution, intent, sources, results preview |
 | `/datasets` | All generated datasets |
 | `/datasets/[id]` | Dataset Explorer — search/filter/sort/paginate, analytics, export |
-| `/sources` | Connector inspector |
+| `/sources` | Source layers, with records contributed per layer |
 | `/workflows` | Generated workflows — clone & rerun |
 | `/history` | All tasks, filterable by status |
 | `/settings` | Preferences and connection details |
@@ -95,4 +96,4 @@ Production check: `npm run build && npm start`.
 - Ask to see the Validate/Deduplicate stage logs: they show the real checks, not canned text.
 - The command palette (`⌘K`) is the fastest way to trigger the full flow.
 - The 3D visualization is intentionally lightweight (capped particle/node counts, no
-  post-processing) to stay performant on modest hardware during a live demo.
+  post-processing) to stay performant on modest hardware while presenting.

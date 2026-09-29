@@ -2,8 +2,8 @@
 
 import * as React from "react";
 import { motion } from "framer-motion";
-import { Globe, Building2, Newspaper, Users, Leaf, Briefcase, File, Plug } from "lucide-react";
-import { CONNECTORS } from "@/lib/demo-engine";
+import { Globe, Building2, Newspaper, Users, Leaf, Briefcase, Plug } from "lucide-react";
+import { CONNECTORS } from "@/lib/collection-engine";
 import { useAppStore } from "@/store/use-app-store";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -15,7 +15,6 @@ const ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
   users: Users,
   leaf: Leaf,
   briefcase: Briefcase,
-  file: File,
 };
 
 const STATUS_VARIANT = {
@@ -40,7 +39,10 @@ export default function SourcesPage() {
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">Sources</h1>
-        <p className="mt-1 text-sm text-muted">Connectors DataPilot can use when planning a workflow.</p>
+        <p className="mx-auto mt-1 max-w-2xl text-sm text-muted">
+          The source layers DataPilot draws from. Every record in a dataset keeps a link back to
+          the layer it came from, so a result is never just an assertion — it&apos;s traceable.
+        </p>
       </div>
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -61,7 +63,7 @@ export default function SourcesPage() {
 
                 <div className="mt-4 space-y-2 border-t border-border pt-3">
                   <Row label="Records contributed" value={contributed.toString()} />
-                  <Row label="Reliability" value={`${c.reliability}%`} />
+                  <Row label="Source quality" value={`${c.reliability}%`} />
                 </div>
               </Card>
             </motion.div>

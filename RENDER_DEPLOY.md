@@ -15,7 +15,7 @@ these two Render resources.
 
 | Render resource | Settings |
 |---|---|
-| **PostgreSQL** | Any plan (Free works for a demo), same region as the web service |
+| **PostgreSQL** | Any plan (Free is enough to evaluate), same region as the web service |
 | **Web Service** | Runtime: **Node**, Branch: `main`, Build: `npm ci && npm run build`, Start: `npm start` |
 
 No disk, no background worker, no cron job, and no Docker image are required.
@@ -46,7 +46,7 @@ If that passes locally, Render will pass too.
    - **Region:** pick one region and reuse it for the web service
      (e.g. Oregon / Frankfurt — closest to you).
    - **PostgreSQL Version:** default (15+ is fine).
-   - **Plan:** Free for a demo, Starter+ for anything real.
+   - **Plan:** Free to evaluate, Starter+ for production.
 3. Click **Create Database** and wait until status is **Available**.
 4. Open the database page and copy the **Internal Database URL**
    (looks like `postgresql://datapilot:...@dpg-.../datapilot_xxxx`).
@@ -73,7 +73,7 @@ Step 6 via `npm run db:init` (it executes `prisma/init.sql` idempotently).
 | **Runtime** | `Node` |
 | **Build Command** | `npm ci && npm run build` |
 | **Start Command** | `npm start` |
-| **Instance Type** | Free for a demo; Starter ($7/mo+) if the build runs out of memory (see Section 8) |
+| **Instance Type** | Free is enough to evaluate; Starter ($7/mo+) if the build runs out of memory (see Section 8) |
 
 4. Leave **Health Check Path** empty (defaults to `/`) — any page works,
    there is no dedicated `/healthz` route in this repo.

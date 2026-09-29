@@ -1,6 +1,6 @@
 import { randomUUID } from "crypto";
 import { pool, query, queryOne } from "@/lib/server/db";
-import { buildInitialStages, STAGE_META } from "@/lib/demo-engine";
+import { buildInitialStages, STAGE_META } from "@/lib/collection-engine";
 import type {
   DataTask,
   Dataset,
@@ -26,8 +26,8 @@ function newId(prefix: string) {
 export async function createTask(prompt: string): Promise<string> {
   const id = newId("task");
   await query(
-    `INSERT INTO "Task" (id, prompt, status, progress, "recordsFound", "duplicatesRemoved", "isDemo")
-     VALUES ($1, $2, 'queued', 0, 0, 0, false)`,
+    `INSERT INTO "Task" (id, prompt, status, progress, "recordsFound", "duplicatesRemoved")
+     VALUES ($1, $2, 'queued', 0, 0, 0)`,
     [id, prompt]
   );
 
@@ -126,7 +126,6 @@ interface TaskRow {
   progress: number;
   recordsFound: number;
   duplicatesRemoved: number;
-  isDemo: boolean;
   createdAt: Date;
   datasetId: string | null;
 }
@@ -194,13 +193,12 @@ async function hydrateTask(row: TaskRow): Promise<DataTask> {
     duplicatesRemoved: row.duplicatesRemoved,
     datasetId: row.datasetId,
     progress: row.progress,
-    isDemo: row.isDemo,
   };
 }
 
 export async function getTask(taskId: string): Promise<DataTask | null> {
   const row = await queryOne<TaskRow>(
-    `SELECT t.id, t.prompt, t.status, t.progress, t."recordsFound", t."duplicatesRemoved", t."isDemo",
+    `SELECT t.id, t.prompt, t.status, t.progress, t."recordsFound", t."duplicatesRemoved",
             t."createdAt", d.id AS "datasetId"
      FROM "Task" t
      LEFT JOIN "Dataset" d ON d."taskId" = t.id
@@ -213,7 +211,7 @@ export async function getTask(taskId: string): Promise<DataTask | null> {
 
 export async function listTasks(limit = 50): Promise<DataTask[]> {
   const rows = await query<TaskRow>(
-    `SELECT t.id, t.prompt, t.status, t.progress, t."recordsFound", t."duplicatesRemoved", t."isDemo",
+    `SELECT t.id, t.prompt, t.status, t.progress, t."recordsFound", t."duplicatesRemoved",
             t."createdAt", d.id AS "datasetId"
      FROM "Task" t
      LEFT JOIN "Dataset" d ON d."taskId" = t.id

@@ -34,7 +34,8 @@ export function collectFromCorpus(intent: ExtractedIntent): { org: CorpusOrg; sc
   const scored = CORPUS.map((org) => ({ org, score: scoreOrg(org, intent, keywords), connectorId: pickConnector(org) }));
   scored.sort((a, b) => b.score - a.score || a.org.name.localeCompare(b.org.name));
   // Keep everything with at least a weak signal; never return < 6 rows so the
-  // demo always has a table. Fallback rows are the top of the corpus ranking.
+  // response always has a usable table. Fallback rows are the top of the corpus
+  // ranking.
   const matched = scored.filter((s) => s.score > 0);
   const result = matched.length >= 6 ? matched : [...matched];
   if (result.length < 6) {

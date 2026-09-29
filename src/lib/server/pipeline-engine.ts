@@ -1,5 +1,5 @@
 import type { SourceRecord, StageId } from "@/types";
-import { CONNECTORS, pickConnectorsForIntent } from "@/lib/demo-engine";
+import { CONNECTORS, pickConnectorsForIntent } from "@/lib/collection-engine";
 import {
   collectFromCorpus,
   dedupeRecords,
@@ -20,7 +20,7 @@ const STAGE_DURATIONS: Record<StageId, number> = {
 };
 
 // One Node process backs `next dev` / `next start`, so an in-memory timer
-// registry per task is enough to drive live progress for a hackathon demo.
+// registry per task is enough to drive live progress.
 // A production deployment behind a serverless platform would replace this
 // with a real job queue (e.g. a worker consuming a Postgres-backed queue),
 // but the persisted state (Task/Stage/Dataset rows) is real either way.
