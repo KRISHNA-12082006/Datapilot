@@ -84,16 +84,20 @@ export function extractIntent(prompt: string): ExtractedIntent {
   };
 }
 
-export function pickConnectorsForIntent(intent: ExtractedIntent): string[] {
-  const chosen = new Set<string>(["web-search", "company-registry"]);
-  const goal = intent.goal.toLowerCase();
-  if (goal.includes("sustain") || goal.includes("csr") || goal.includes("environment")) chosen.add("csr-database");
-  if (goal.includes("job") || goal.includes("hiring") || goal.includes("role")) chosen.add("job-boards");
-  if (goal.includes("sponsor") || goal.includes("lead") || goal.includes("news")) chosen.add("news-feed");
-  if (goal.includes("contact") || goal.includes("social")) chosen.add("social-directory");
-  if (chosen.size < 3) chosen.add("news-feed");
-  return Array.from(chosen);
-}
+// What each source layer actually holds. Shown on the Sources page so the
+// list is self-explanatory rather than six mysterious connector names.
+export const SOURCE_LAYER_NOTES: Record<string, string> = {
+  "web-search": "Official websites of energy, manufacturing and infrastructure majors — company site, industry and HQ.",
+  "company-registry": "Registered company profiles: fintech, software and industrial firms with contact details.",
+  "news-feed": "Climate and corporate news coverage used to surface sponsor- and announcement-related orgs.",
+  "social-directory": "Public profiles of consumer-tech and mobility startups.",
+  "csr-database": "CSR arms, foundations and research bodies working on sustainability and environment.",
+  "job-boards": "Tech employers indexed for hiring questions (roles, teams, locations).",
+};
+
+// Planned per question by src/lib/collect.ts planSourcesForIntent(): the layers
+// are derived from the organizations that match the question, so the plan and
+// the delivered dataset always agree.
 
 // Confidence for intent: deterministic, from extraction evidence (no random).
 export function intentConfidence(locFound: boolean, fieldsCount: number, entityCertain: boolean): number {

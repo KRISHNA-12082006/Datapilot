@@ -30,6 +30,16 @@ prompt. Keep it concise.`;
  */
 const DEFAULT_MODEL = "x-ai/grok-4.1-fast:free";
 
+/** Which reasoning engine is live right now. Used by the Settings page. */
+export function describeAI(): { configured: boolean; provider: string; model: string } {
+  const configured = Boolean(process.env.OPENROUTER_API_KEY || process.env.AI_API_KEY);
+  return {
+    configured,
+    provider: "OpenRouter",
+    model: process.env.AI_MODEL || DEFAULT_MODEL,
+  };
+}
+
 export async function extractIntentAI(prompt: string): Promise<{ intent: ExtractedIntent; usedAI: boolean; model?: string }> {
   const apiKey = process.env.OPENROUTER_API_KEY || process.env.AI_API_KEY;
   const model = process.env.AI_MODEL || DEFAULT_MODEL;

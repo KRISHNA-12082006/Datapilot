@@ -71,8 +71,8 @@ export default function NewTaskPage() {
         </div>
         <h1 className="text-2xl font-semibold tracking-tight">What business question are you answering?</h1>
         <p className="mx-auto mt-2 max-w-xl text-sm text-muted">
-          Ask the way you&apos;d brief a colleague. The AI plans the collection, verifies every
-          record against its source, and hands you a dataset you can act on.
+          Ask the way you&apos;d brief a colleague. Name the columns you want and DataPilot will
+          build them — then verify every record against its source.
         </p>
       </div>
 
@@ -87,7 +87,9 @@ export default function NewTaskPage() {
           }}
         />
         <div className="mt-4 flex items-center justify-between border-t border-border pt-4">
-          <p className="text-xs text-muted">AI plans the workflow · every record cites its source</p>
+          <p className="text-xs text-muted">
+            Ask for these columns: company name · website · industry · location · contact email · phone
+          </p>
           <Button variant="gradient" disabled={!prompt.trim() || submitting} onClick={() => handleSubmit()}>
             Build my dataset <ArrowRight className="h-4 w-4" />
           </Button>

@@ -1,9 +1,11 @@
 import type { SourceRecord, StageId } from "@/types";
-import { CONNECTORS, pickConnectorsForIntent } from "@/lib/collection-engine";
+import { CONNECTORS } from "@/lib/collection-engine";
 import {
   collectFromCorpus,
   dedupeRecords,
+  planSourcesForIntent,
   recordConfidence,
+  unsupportedFields,
   validateRecord,
 } from "@/lib/collect";
 import { extractIntentAI } from "@/lib/server/ai";
@@ -142,11 +144,12 @@ async function completeStage(taskId: string, prompt: string, stageIndex: number)
     );
   } else if (stageId === "plan") {
     const task = await repo.getTask(taskId);
-    const connectors = task?.intent ? pickConnectorsForIntent(task.intent) : ["web-search", "company-registry"];
+    const enabled = await repo.listEnabledSourceIds();
+    const connectors = task?.intent ? planSourcesForIntent(task.intent, enabled) : enabled.slice(0, 2);
     state.connectors = connectors;
     await repo.saveTaskConnectors(taskId, connectors);
     logs.push(
-      `Selected ${connectors.length} connectors`,
+      `Searching ${enabled.length} of ${CONNECTORS.length} source layers (set on the Sources page)`,
       ...connectors.map((c) => `+ ${CONNECTORS.find((x) => x.id === c)?.name ?? c}`)
     );
   } else if (stageId === "collect") {
@@ -157,8 +160,10 @@ async function completeStage(taskId: string, prompt: string, stageIndex: number)
       state.raw = 0;
       state.validated = [];
     } else {
-      // REAL collection: rank the curated corpus against the intent.
-      const hits = collectFromCorpus(intent);
+      // REAL collection: rank the curated corpus against the intent, searching
+      // only the source layers the user has switched on.
+      const enabled = await repo.listEnabledSourceIds();
+      const hits = collectFromCorpus(intent, enabled);
       const now = new Date().toISOString();
       const connectorNames = new Map(CONNECTORS.map((c) => [c.id, c.name]));
       const records: SourceRecord[] = hits.map((h, i) => {
@@ -174,11 +179,15 @@ async function completeStage(taskId: string, prompt: string, stageIndex: number)
             case "Location": v = h.org.location; break;
             case "Contact Email": v = h.org.contactEmail; break;
             case "Phone": v = h.org.phone; break;
-            default: v = h.org.name;
+            // A column the knowledge base cannot fill stays empty rather than
+            // being filled with something invented.
+            default: v = undefined;
           }
           if (v !== undefined && String(v).trim() !== "") {
             fields[f] = v;
             filled++;
+          } else {
+            fields[f] = "—";
           }
         }
         return {
@@ -204,25 +213,41 @@ async function completeStage(taskId: string, prompt: string, stageIndex: number)
       );
     }
   } else if (stageId === "validate") {
-    // REAL validation: URL/email/completeness checks per record.
+    // REAL validation against the columns the question asked for. Only records
+    // with no name or no traceable source URL are dropped; a column the sources
+    // cannot fill is reported and the row is flagged for review instead.
+    const task = await repo.getTask(taskId);
+    const requested = task?.intent?.fields ?? [];
     const kept: SourceRecord[] = [];
     let dropped = 0;
     const dropReasons = new Map<string, number>();
+    const warned = new Map<string, number>();
     for (const r of state.validated) {
-      const v = validateRecord(r);
-      if (v.valid) kept.push(r);
-      else {
+      const v = validateRecord(r, requested);
+      if (!v.valid) {
         dropped++;
         for (const reason of v.reasons) dropReasons.set(reason, (dropReasons.get(reason) ?? 0) + 1);
+        continue;
       }
+      for (const w of v.warnings) warned.set(w, (warned.get(w) ?? 0) + 1);
+      kept.push(v.warnings.length > 0 ? { ...r, flagged: true } : r);
     }
     state.validated = kept;
     state.dropped = dropped;
+
+    const unsupported = unsupportedFields(requested);
     logs.push(
-      `Checked ${state.raw} records: ${kept.length} valid, ${dropped} dropped`,
-      ...[...dropReasons.entries()].map(([reason, n]) => `- ${reason}: ${n}`)
+      `Checked ${state.raw} records against ${requested.length} requested columns`,
+      dropped > 0
+        ? `Dropped ${dropped} records that could not be traced to a source URL`
+        : "Every record resolves to a live source URL",
+      ...[...warned.entries()].map(([reason, n]) => `! ${reason}: ${n} records flagged for review`)
     );
-    if (dropReasons.size === 0) logs.push("All records passed URL / email / completeness checks");
+    if (unsupported.length > 0) {
+      logs.push(
+        `Not in this knowledge base: ${unsupported.join(", ")} — delivered as empty columns`
+      );
+    }
   } else if (stageId === "deduplicate") {
     // REAL dedupe: normalized name+domain key.
     const before = state.validated.length;
@@ -254,7 +279,8 @@ async function finalizePipeline(taskId: string, prompt: string) {
   let records = (state?.validated ?? []).map((r) => ({ ...r, taskId }));
   let duplicatesRemoved = state?.duplicatesRemoved ?? 0;
   if (records.length === 0) {
-    const hits = collectFromCorpus(task.intent);
+    const enabled = await repo.listEnabledSourceIds();
+    const hits = collectFromCorpus(task.intent, enabled);
     const now = new Date().toISOString();
     const connectorNames = new Map(CONNECTORS.map((c) => [c.id, c.name]));
     const rebuilt: typeof records = hits.map((h, i) => {
@@ -267,7 +293,7 @@ async function finalizePipeline(taskId: string, prompt: string) {
           : f === "Location" ? h.org.location
           : f === "Contact Email" ? h.org.contactEmail
           : f === "Phone" ? h.org.phone
-          : h.org.name;
+          : "—";
         fields[f] = v;
       }
       const conf = recordConfidence(h.score, task.intent!.fields.length, task.intent!.fields.length);
@@ -293,7 +319,8 @@ async function finalizePipeline(taskId: string, prompt: string) {
     name,
     prompt,
     columns: task.intent.fields,
-    sourcesUsed: task.connectors,
+    // The sources that actually produced records — not the ones that were planned.
+    sourcesUsed: Array.from(new Set(records.map((r) => r.sourceName))),
     records,
   });
 

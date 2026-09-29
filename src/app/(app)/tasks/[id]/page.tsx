@@ -10,8 +10,11 @@ import {
   RotateCcw,
   ArrowLeft,
   PartyPopper,
+  Trash2,
 } from "lucide-react";
 import { api } from "@/lib/api";
+import { useAppStore } from "@/store/use-app-store";
+import { ConfirmButton } from "@/components/ui/confirm-button";
 import type { DataTask, Dataset } from "@/types";
 import { toast } from "sonner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -27,6 +30,7 @@ export default function TaskDetailPage() {
   const params = useParams<{ id: string }>();
   const router = useRouter();
   const id = params.id;
+  const deleteTask = useAppStore((s) => s.deleteTask);
   const [task, setTask] = React.useState<DataTask | null>(null);
   const [dataset, setDataset] = React.useState<Dataset | null>(null);
   const [missing, setMissing] = React.useState(false);
@@ -108,6 +112,16 @@ export default function TaskDetailPage() {
     }
   };
 
+  const removeTask = async () => {
+    try {
+      await deleteTask(task.id);
+      toast.success("Request deleted");
+      router.push("/history");
+    } catch {
+      toast.error("Could not delete the request. Please try again.");
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div>
@@ -144,6 +158,12 @@ export default function TaskDetailPage() {
             <Button variant="secondary" size="sm" onClick={handleRerun}>
               <RotateCcw className="h-3.5 w-3.5" /> Rerun
             </Button>
+            <ConfirmButton
+              label="Delete"
+              confirmLabel="Delete request?"
+              onConfirm={removeTask}
+              icon={<Trash2 className="h-3.5 w-3.5" />}
+            />
           </div>
         </div>
       </div>

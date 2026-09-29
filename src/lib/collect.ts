@@ -29,49 +29,114 @@ function scoreOrg(org: CorpusOrg, intent: ExtractedIntent, keywords: Set<string>
   return score;
 }
 
-export function collectFromCorpus(intent: ExtractedIntent): { org: CorpusOrg; score: number; connectorId: string }[] {
-  const keywords = new Set(tokenize(intent.goal).filter((w) => !STOP.has(w)));
-  const scored = CORPUS.map((org) => ({ org, score: scoreOrg(org, intent, keywords), connectorId: pickConnector(org) }));
-  scored.sort((a, b) => b.score - a.score || a.org.name.localeCompare(b.org.name));
-  // Keep everything with at least a weak signal; never return < 6 rows so the
-  // response always has a usable table. Fallback rows are the top of the corpus
-  // ranking.
-  const matched = scored.filter((s) => s.score > 0);
-  const result = matched.length >= 6 ? matched : [...matched];
-  if (result.length < 6) {
-    for (const s of scored) {
-      if (!result.includes(s)) result.push(s);
-      if (result.length >= 10) break;
-    }
-  }
-  return result.slice(0, 18);
+export interface CorpusHit {
+  org: CorpusOrg;
+  score: number;
+  connectorId: string;
 }
 
-function pickConnector(org: CorpusOrg): string {
-  if (org.tags.includes("csr") || org.tags.includes("ngo") || org.tags.includes("research")) return "csr-database";
-  if (org.tags.includes("startup") || org.tags.includes("fintech")) return "company-registry";
-  if (org.tags.includes("news") || org.tags.includes("sponsor")) return "news-feed";
-  if (org.tags.includes("software") || org.tags.includes("technology")) return "web-search";
-  return "company-registry";
+/**
+ * Rank the curated corpus against the extracted intent.
+ * `enabledLayers` limits the search to the source layers the user has switched
+ * on (Sources page); when it is empty/undefined every layer is searched.
+ */
+export function collectFromCorpus(intent: ExtractedIntent, enabledLayers?: string[]): CorpusHit[] {
+  const allowed = enabledLayers && enabledLayers.length > 0 ? new Set(enabledLayers) : null;
+  const keywords = new Set(tokenize(intent.goal).filter((w) => !STOP.has(w)));
+  const scored: CorpusHit[] = CORPUS.filter((org) => !allowed || allowed.has(org.layer)).map(
+    (org) => ({ org, score: scoreOrg(org, intent, keywords), connectorId: org.layer })
+  );
+  scored.sort((a, b) => b.score - a.score || a.org.name.localeCompare(b.org.name));
+
+  // Everything with a signal, capped at 18; if that yields fewer than 6 rows the
+  // best remaining orgs top up the table so a dataset is never near-empty.
+  const result = scored.filter((s) => s.score > 0).slice(0, 18);
+  if (result.length < 6) {
+    for (const s of scored) {
+      if (result.includes(s)) continue;
+      result.push(s);
+      if (result.length >= 6) break;
+    }
+  }
+  return result;
+}
+
+/**
+ * Which source layers this question will actually be answered from: the layers
+ * of the organizations that pass the relevance filter, in ranking order. This is
+ * what the Plan stage reports as "sources being searched", so the plan and the
+ * result can never disagree.
+ */
+export function planSourcesForIntent(intent: ExtractedIntent, enabledLayers?: string[], max = 5): string[] {
+  const layers: string[] = [];
+  for (const hit of collectFromCorpus(intent, enabledLayers)) {
+    if (!layers.includes(hit.connectorId)) layers.push(hit.connectorId);
+    if (layers.length >= max) break;
+  }
+  return layers;
 }
 
 // -- Validate: real checks -------------------------------------------------
 export interface ValidationResult {
+  /** false only for records that cannot be published at all (no name / no source). */
   valid: boolean;
+  /** Field gaps that are worth surfacing but do not disqualify the record. */
+  warnings: string[];
+  /** Hard failures — the record is dropped. */
   reasons: string[];
 }
 
-export function validateRecord(rec: SourceRecord): ValidationResult {
+/**
+ * The columns this knowledge base can actually fill. Anything else the user asks
+ * for (salary bands, role titles, …) is delivered as an empty column and reported
+ * once by the Validate stage, rather than flagged on every row.
+ */
+export const COLLECTABLE_FIELDS = new Set([
+  "Name",
+  "Company",
+  "Website",
+  "Industry",
+  "Location",
+  "Contact Email",
+  "Phone",
+]);
+
+export function unsupportedFields(requestedFields: string[]): string[] {
+  return requestedFields.filter((f) => !COLLECTABLE_FIELDS.has(f));
+}
+
+/**
+ * Validate against the fields the question actually asked for. A record is only
+ * dropped when it has no name or cannot be traced to a source URL; anything else
+ * (a column the sources could not fill) is reported as a warning so the row still
+ * reaches the dataset, flagged for review.
+ */
+export function validateRecord(rec: SourceRecord, requestedFields?: string[]): ValidationResult {
+  const warnings: string[] = [];
   const reasons: string[] = [];
   const f = rec.fields;
-  if (!f["Name"] || String(f["Name"]).trim().length < 2) reasons.push("missing name");
+  const asked = requestedFields && requestedFields.length > 0 ? new Set(requestedFields) : null;
+  const askedFor = (key: string) => !asked || asked.has(key);
+
+  const name = String(f["Name"] ?? f["Company"] ?? "").trim();
+  if (name.length < 2) reasons.push("missing name");
+
+  // Provenance is never optional: a record we cannot trace has no place here.
   const url = String(f["Website"] ?? rec.sourceUrl ?? "");
-  if (!/^https?:\/\/[a-z0-9-]+(\.[a-z0-9-]+)+/i.test(url)) reasons.push("bad website URL");
+  if (!/^https?:\/\/[a-z0-9-]+(\.[a-z0-9-]+)+/i.test(url)) reasons.push("missing or invalid source URL");
+  else if (askedFor("Website") && !f["Website"]) warnings.push("website not in source layer");
+
   const email = String(f["Contact Email"] ?? "");
-  if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) reasons.push("bad email format");
-  const loc = String(f["Location"] ?? "");
-  if (!loc || loc === "—") reasons.push("missing location");
-  return { valid: reasons.length === 0, reasons };
+  if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) warnings.push("bad email format");
+
+  // Only the columns this knowledge base can actually fill are held against a row.
+  for (const field of asked ?? []) {
+    if (!COLLECTABLE_FIELDS.has(field)) continue;
+    const v = String(f[field] ?? "").trim();
+    if (!v || v === "—") warnings.push(`${field} not in source layer`);
+  }
+
+  return { valid: reasons.length === 0, warnings: Array.from(new Set(warnings)), reasons };
 }
 
 // -- Deduplicate: normalized key, deterministic --------------------------------
