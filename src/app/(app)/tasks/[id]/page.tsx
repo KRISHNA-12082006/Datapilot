@@ -13,7 +13,6 @@ import {
   Trash2,
   Zap,
   Globe,
-  Terminal,
 } from "lucide-react";
 import { api } from "@/lib/api";
 import { useAppStore } from "@/store/use-app-store";
@@ -26,6 +25,8 @@ import { TaskStatusBadge } from "@/components/dashboard/task-status-badge";
 import { PipelineStageRow } from "@/components/workflow/pipeline-stage";
 import { IntentCard } from "@/components/workflow/intent-card";
 import { ResultsPreviewTable } from "@/components/workflow/results-preview-table";
+import { AnalystBriefCard } from "@/components/workflow/analyst-brief";
+import { buildAnalystBrief } from "@/lib/insights";
 import { formatRelativeTime } from "@/lib/utils";
 import Link from "next/link";
 
@@ -204,7 +205,7 @@ export default function TaskDetailPage() {
               <div className="grid grid-cols-2 gap-3 text-sm">
                 <div>
                   <p className="mono-tabular text-lg font-semibold text-foreground">{task.recordsFound}</p>
-                  <p className="text-[11px] text-muted-2">records verified</p>
+                  <p className="text-[11px] text-muted-2">records collected</p>
                 </div>
                 <div>
                   <p className="mono-tabular text-lg font-semibold text-foreground">{task.duplicatesRemoved}</p>
@@ -217,7 +218,14 @@ export default function TaskDetailPage() {
       </div>
 
       {task.status === "completed" && dataset && (
-        <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}>
+        <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
+          <AnalystBriefCard brief={buildAnalystBrief({
+            prompt: dataset.prompt,
+            records: dataset.records,
+            columns: dataset.columns,
+            sourcesUsed: dataset.sourcesUsed,
+            intent: task.intent,
+          })} />
           <Card>
             <CardHeader>
               <div className="flex items-center gap-2">

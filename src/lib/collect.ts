@@ -2,12 +2,12 @@
 // intent, then validates + deduplicates with fully deterministic logic.
 // Every record returned here comes from CORPUS (real org, real website URL).
 // Also supports live crawling via external crawler microservice.
-import type { ExtractedIntent, SourceRecord, CrawlerRecord } from "@/types";
+import type { ExtractedIntent, SourceRecord } from "@/types";
 import { CORPUS, type CorpusOrg } from "@/lib/corpus";
+import { CONNECTORS } from "@/lib/collection-engine";
 import {
   startLiveCrawl,
   mapCrawlerRecordToSourceRecord,
-  PLATFORM_CATEGORIES,
   getPlatformsForCategories,
   type PlatformCategory,
 } from "@/lib/crawler-client";
@@ -41,6 +41,12 @@ export interface CorpusHit {
   org: CorpusOrg;
   score: number;
   connectorId: string;
+  /**
+   * True when this row was pulled in purely to keep the table from being
+   * near-empty (score 0 — no relevance signal). Callers surface it as
+   * "flagged" so a filler row is never dressed up as a match.
+   */
+  backfilled?: boolean;
 }
 
 /**
@@ -58,15 +64,50 @@ export function collectFromCorpus(intent: ExtractedIntent, enabledLayers?: strin
 
   // Everything with a signal, capped at 18; if that yields fewer than 6 rows the
   // best remaining orgs top up the table so a dataset is never near-empty.
+  // Topped-up rows are explicitly marked `backfilled` — they carry no relevance
+  // signal and are reported as such instead of passing as real matches.
   const result = scored.filter((s) => s.score > 0).slice(0, 18);
   if (result.length < 6) {
     for (const s of scored) {
       if (result.includes(s)) continue;
-      result.push(s);
+      result.push({ ...s, backfilled: true });
       if (result.length >= 6) break;
     }
   }
   return result;
+}
+
+/**
+ * Project a corpus org onto exactly the columns the question asked for.
+ * Returns the filled values plus how many were actually populated, so
+ * confidence reflects real completeness rather than an assumed best case.
+ */
+export function fillFields(
+  org: CorpusOrg,
+  requestedFields: string[]
+): { fields: Record<string, string | number>; filled: number } {
+  const fields: Record<string, string | number> = {};
+  let filled = 0;
+  for (const f of requestedFields) {
+    let v: string | number | undefined;
+    switch (f) {
+      case "Name": v = org.name; break;
+      case "Company": v = org.name; break;
+      case "Website": v = org.website; break;
+      case "Industry": v = org.industry; break;
+      case "Location": v = org.location; break;
+      case "Contact Email": v = org.contactEmail; break;
+      case "Phone": v = org.phone; break;
+      default: v = undefined;
+    }
+    if (v !== undefined && String(v).trim() !== "") {
+      fields[f] = v;
+      filled++;
+    } else {
+      fields[f] = "—";
+    }
+  }
+  return { fields, filled };
 }
 
 /**
@@ -167,13 +208,21 @@ export function dedupeRecords(records: SourceRecord[]): { unique: SourceRecord[]
 }
 
 // -- Confidence: deterministic, from evidence -----------------------------------
-// Calibrated so top-ranked matches land ~0.8-0.9 and weak matches ~0.6-0.7,
-// giving the UI's confidence badges real spread instead of all-green.
+// Evidence = relevance signal (how hard the org matched the question) plus
+// field completeness. Calibrated across the full 0.50–0.98 range so the UI's
+// badges and the analytics histogram actually separate strong from weak rows:
+//   score 12, all columns filled  -> ~0.98  (strong match)
+//   score 8,  all columns filled  -> ~0.84  (good match)
+//   score 4,  most columns filled -> ~0.67  (weak match)
+//   score 0 (backfilled filler)   -> ~0.56  (never advertised as a match)
 export function recordConfidence(score: number, fieldsFilled: number, fieldsTotal: number): number {
   const completeness = fieldsTotal > 0 ? fieldsFilled / fieldsTotal : 0.5;
-  const signal = Math.min(1, score / 14);
-  const raw = 0.58 + 0.3 * signal + 0.08 * completeness;
-  return Math.round(Math.min(0.96, Math.max(0.55, raw)) * 100) / 100;
+  const signal = Math.min(1, Math.max(0, score / 12));
+  const raw = 0.42 + 0.42 * signal + 0.14 * completeness;
+  // A row with no relevance signal cannot claim "good match" however complete
+  // its columns are — cap it below the 0.70 "weak match" threshold.
+  const capped = score <= 0 ? Math.min(raw, 0.58) : raw;
+  return Math.round(Math.min(0.98, Math.max(0.5, capped)) * 100) / 100;
 }
 
 // -- Live Crawling Integration ----------------------------------------------------
@@ -184,6 +233,7 @@ export interface LiveCrawlOptions {
   enabledCategories?: PlatformCategory[];
   maxRecordsPerPlatform?: number;
   specificPlatforms?: string[];
+  taskId?: string;
 }
 
 export interface LiveCrawlResult {
@@ -201,7 +251,7 @@ export interface LiveCrawlResult {
 export async function collectLive(
   options: LiveCrawlOptions
 ): Promise<LiveCrawlResult> {
-  const { intent, enabledCategories, maxRecordsPerPlatform = 50, specificPlatforms } = options;
+  const { intent, enabledCategories, maxRecordsPerPlatform = 50, specificPlatforms, taskId = "" } = options;
 
   let platforms = specificPlatforms;
   if (!platforms && enabledCategories) {
@@ -217,9 +267,9 @@ export async function collectLive(
 
   const response = await startLiveCrawl(crawlRequest);
 
-  // Convert crawler records to SourceRecords
+  // Convert crawler records to SourceRecords, projected onto the requested columns
   const sourceRecords: SourceRecord[] = response.records.map((cr) =>
-    mapCrawlerRecordToSourceRecord(cr, "", intent)
+    mapCrawlerRecordToSourceRecord(cr, taskId, intent)
   );
 
   return {
@@ -243,38 +293,45 @@ export async function collectHybrid(
     maxCorpusResults?: number;
     maxLivePerPlatform?: number;
     liveMode?: boolean;
+    taskId?: string;
   } = {}
-): Promise<{ corpus: CorpusHit[]; live: SourceRecord[]; combined: SourceRecord[] }> {
+): Promise<{
+  corpus: CorpusHit[];
+  live: SourceRecord[];
+  combined: SourceRecord[];
+  platformStats: Record<string, number>;
+  errors: Record<string, string>;
+}> {
   const {
     enabledLayers,
     enabledCategories,
     maxCorpusResults = 18,
     maxLivePerPlatform = 50,
     liveMode = false,
+    taskId = "",
   } = options;
 
   // Always get corpus results (deterministic fallback)
   const corpusHits = collectFromCorpus(intent, enabledLayers).slice(0, maxCorpusResults);
 
-  // Convert corpus hits to SourceRecords
-  const corpusRecords: SourceRecord[] = corpusHits.map((hit) => ({
-    id: `corpus_${hit.org.name.replace(/\s+/g, "_")}`,
-    taskId: "",
-    fields: {
-      Name: hit.org.name,
-      Company: hit.org.name,
-      Website: hit.org.website,
-      Industry: hit.org.industry,
-      Location: hit.org.location,
-      "Contact Email": hit.org.contactEmail,
-      Phone: hit.org.phone,
-    },
-    confidence: recordConfidence(hit.score, 6, 6),
-    sourceName: hit.connectorId,
-    sourceUrl: hit.org.website,
-    collectedAt: new Date().toISOString().split("T")[0],
-    flagged: false,
-  }));
+  // Project corpus hits onto the columns this question actually asked for —
+  // the same mapping the corpus-only path uses, so hybrid and non-hybrid
+  // datasets are shaped identically. (This previously hardcoded 7 columns,
+  // silently dropping any column the prompt requested.)
+  const connectorNames = new Map(CONNECTORS.map((c) => [c.id, c.name]));
+  const corpusRecords: SourceRecord[] = corpusHits.map((hit, i) => {
+    const { fields, filled } = fillFields(hit.org, intent.fields);
+    return {
+      id: `corpus_${i}_${slugify(hit.org.name)}`,
+      taskId,
+      fields,
+      confidence: recordConfidence(hit.score, filled, intent.fields.length),
+      sourceName: connectorNames.get(hit.connectorId) ?? hit.connectorId,
+      sourceUrl: hit.org.website,
+      collectedAt: new Date().toISOString(),
+      flagged: hit.backfilled === true,
+    };
+  });
 
   let liveRecords: SourceRecord[] = [];
   let platformStats: Record<string, number> = {};
@@ -286,6 +343,7 @@ export async function collectHybrid(
         intent,
         enabledCategories,
         maxRecordsPerPlatform: maxLivePerPlatform,
+        taskId,
       });
       liveRecords = liveResult.records;
       platformStats = liveResult.platformStats;
@@ -296,9 +354,14 @@ export async function collectHybrid(
     }
   }
 
-  // Merge and deduplicate
+  // Merge and deduplicate. Corpus rows come first so, when the same company is
+  // found both in the corpus and on the open web, the fully-filled corpus row wins.
   const combined = [...corpusRecords, ...liveRecords];
   const { unique } = dedupeRecords(combined);
 
-  return { corpus: corpusHits, live: liveRecords, combined: unique };
+  return { corpus: corpusHits, live: liveRecords, combined: unique, platformStats, errors };
+}
+
+function slugify(s: string): string {
+  return s.replace(/\s+/g, "_");
 }

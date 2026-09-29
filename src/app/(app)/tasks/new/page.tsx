@@ -4,9 +4,8 @@ import * as React from "react";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import {
-  Sparkles, ArrowRight, Building2, Briefcase, Rocket, Leaf, ShieldCheck, Download, Mail, Zap, Globe, Database, Star, MessageSquare, Terminal
+  Sparkles, ArrowRight, Building2, Briefcase, Rocket, Leaf, ShieldCheck, Download, Mail, Zap, Globe, Star, MessageSquare, Terminal
 } from "lucide-react";
-import { useAppStore } from "@/store/use-app-store";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Card } from "@/components/ui/card";
@@ -22,6 +21,12 @@ const PLATFORM_CATEGORIES = {
   social: { label: "Social & Discussions", icon: MessageSquare, desc: "Reddit, Hacker News comments" },
   dev: { label: "Code & Dev Platforms", icon: Terminal, desc: "GitHub repositories" },
 } as const;
+
+type LiveCategory = keyof typeof PLATFORM_CATEGORIES;
+const LIVE_CATEGORY_ENTRIES = Object.entries(PLATFORM_CATEGORIES) as [
+  LiveCategory,
+  (typeof PLATFORM_CATEGORIES)[LiveCategory],
+][];
 
 const EXAMPLES = [
   {
@@ -51,7 +56,7 @@ const EXAMPLES = [
 ];
 
 const OUTCOMES = [
-  { icon: ShieldCheck, title: "Trust every row", desc: "Each record links to its verified source. No black-box data." },
+  { icon: ShieldCheck, title: "Trust every row", desc: "Each record links back to the page it came from, with a confidence score. No black-box data." },
   { icon: Mail, title: "Act immediately", desc: "Outreach lists with emails, sites & locations — ready to contact." },
   { icon: Download, title: "Take it anywhere", desc: "Export clean CSV/JSON for sheets, CRMs or pitch decks." },
 ];
@@ -60,11 +65,10 @@ export default function NewTaskPage() {
   const [prompt, setPrompt] = React.useState("");
   const [submitting, setSubmitting] = React.useState(false);
   const [liveMode, setLiveMode] = React.useState(false);
-  const [enabledCategories, setEnabledCategories] = React.useState<("news" | "reviews" | "social" | "dev")[]>([]);
-  const submitPrompt = useAppStore((s) => s.submitPrompt);
+  const [enabledCategories, setEnabledCategories] = React.useState<LiveCategory[]>([]);
   const router = useRouter();
 
-  const toggleCategory = (cat: "news" | "reviews" | "social" | "dev") => {
+  const toggleCategory = (cat: LiveCategory) => {
     setEnabledCategories(prev => prev.includes(cat) ? prev.filter(c => c !== cat) : [...prev, cat]);
   };
 
@@ -100,7 +104,7 @@ export default function NewTaskPage() {
         <h1 className="text-2xl font-semibold tracking-tight">What business question are you answering?</h1>
         <p className="mx-auto mt-2 max-w-xl text-sm text-muted">
           Ask the way you&apos;d brief a colleague. Name the columns you want and DataPilot will
-          build them — then verify every record against its source.
+          build them — then tie every row back to the page it came from.
         </p>
       </div>
 
@@ -137,11 +141,11 @@ export default function NewTaskPage() {
             <div className="space-y-2">
               <p className="text-xs font-medium text-muted">Select live data sources:</p>
               <div className="grid grid-cols-2 gap-2">
-                {Object.entries(PLATFORM_CATEGORIES).map(([key, config]) => (
+                {LIVE_CATEGORY_ENTRIES.map(([key, config]) => (
                   <Label key={key} className="flex items-center gap-2 rounded-lg border border-border bg-surface/50 p-3 text-left cursor-pointer hover:bg-surface/90 transition-colors">
                     <Checkbox
-                      checked={enabledCategories.includes(key as any)}
-                      onCheckedChange={() => toggleCategory(key as any)}
+                      checked={enabledCategories.includes(key)}
+                      onCheckedChange={() => toggleCategory(key)}
                     />
                     <div className="flex flex-col">
                       <div className="flex items-center gap-1.5">
