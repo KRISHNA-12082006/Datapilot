@@ -124,7 +124,10 @@ already exists.
 
 Pick **one** of these:
 
-### Option A — Pre-Deploy Command (recommended, runs on every deploy)
+### Option A — Pre-Deploy Command (paid plans only)
+
+> Not available on free-tier services. Use Option B, or the Blueprint default
+> (init folded into the start command) instead.
 
 Web Service -> **Settings -> Pre-Deploy Command**, set:
 
@@ -193,8 +196,8 @@ SELECT count(*) FROM "Connector";  -- expect 7
 
 `render.yaml` is already committed at the repo root, so you can deploy in one
 click: Dashboard -> **New + -> Blueprint** -> point at this repo. It creates
-the DB + service together with the pre-deploy init (`npm run db:init`) wired
-in. The file content:
+the DB + service together, with the DB init (`npm run db:init`) folded into
+the **start command**. The file content:
 
 ```yaml
 services:
@@ -203,10 +206,9 @@ services:
     env: node
     branch: main
     buildCommand: npm ci && npm run build
-    startCommand: npm start
-    preDeployCommand: npm run db:init   # creates tables + seeds connectors
+    startCommand: npm run db:init && npm start   # idempotent: creates tables + seeds connectors
     healthCheckPath: /
-    plan: free                          # bump to starter for no-sleep + more RAM
+    plan: free                                   # bump to starter for no-sleep + more RAM
     envVars:
       - key: NODE_VERSION
         value: 22.14.0
@@ -223,6 +225,12 @@ databases:
   - name: datapilot-db
     plan: free
 ```
+
+> `preDeployCommand` needs a paid instance type, so it is intentionally
+> **not** in the free-tier Blueprint. Running the idempotent init in the
+> start command achieves the same result (this mirrors Render's own
+> remix-postgres example). If you later upgrade to Starter, you can move
+> `npm run db:init` to `preDeployCommand` instead.
 
 > After applying the Blueprint, set `AI_API_KEY` (if used) and correct
 > `NEXT_PUBLIC_APP_URL` in the dashboard, then redeploy once.

@@ -10,9 +10,13 @@ services:
     env: node
     branch: main
     plan: free # bump to starter for no-sleep + more RAM
+    # NOTE: preDeployCommand needs a paid instance type, so it is omitted
+    # here. The idempotent DB init runs in the start command instead (same
+    # pattern as Render's own remix-postgres example, which runs
+    # `prisma migrate deploy` in startCommand). Runtime is also where the
+    # internal DATABASE_URL hostname is guaranteed to resolve.
     buildCommand: npm ci && npm run build
-    startCommand: npm start
-    preDeployCommand: npm run db:init # idempotent: creates tables + seeds connectors
+    startCommand: npm run db:init && npm start
     healthCheckPath: /
     envVars:
       - key: NODE_VERSION
