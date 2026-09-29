@@ -28,8 +28,8 @@ export default function SettingsPage() {
         </CardHeader>
         <CardContent className="space-y-5">
           <SettingRow
-            label="Demo mode"
-            description="Generate realistic simulated data instead of calling live connectors."
+            label="Corpus mode"
+            description="Rank the curated corpus against each prompt instead of calling live connectors."
           >
             <Switch checked={demoMode} onCheckedChange={setDemoMode} />
           </SettingRow>
@@ -49,8 +49,8 @@ export default function SettingsPage() {
         </CardHeader>
         <CardContent className="space-y-4">
           <EnvRow name="DATABASE_URL" placeholder="postgresql://user:password@host:5432/datapilot" />
-          <EnvRow name="AI_API_KEY" placeholder="sk-••••••••••••" />
-          <EnvRow name="SEARCH_API_KEY" placeholder="••••••••••••" />
+          <EnvRow name="OPENROUTER_API_KEY" placeholder="sk-or-••••••••••" />
+          <EnvRow name="AI_MODEL" placeholder="x-ai/grok-4.1-fast:free" />
         </CardContent>
       </Card>
 

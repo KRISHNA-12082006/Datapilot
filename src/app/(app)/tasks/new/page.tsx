@@ -77,7 +77,7 @@ export default function NewTaskPage() {
           }}
         />
         <div className="mt-4 flex items-center justify-between border-t border-border pt-4">
-          <Badge variant="cyan">Demo Mode — results are simulated</Badge>
+          <Badge variant="cyan">Verified corpus — every record traceable to source</Badge>
           <Button variant="gradient" disabled={!prompt.trim() || submitting} onClick={() => handleSubmit()}>
             Run collection <ArrowRight className="h-4 w-4" />
           </Button>

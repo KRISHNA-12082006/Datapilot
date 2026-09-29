@@ -31,7 +31,7 @@ Useful local sanity check before you deploy:
 
 ```bash
 npm install
-cp .env.example .env      # set DATABASE_URL (and optionally AI_API_KEY)
+cp .env.example .env      # set DATABASE_URL (and OPENROUTER_API_KEY for real LLM intent)
 npm run db:init           # creates tables + seeds the connector catalog
 npm run build && npm start
 ```
@@ -101,8 +101,9 @@ On the Web Service page -> **Environment** -> add these:
 | `DATABASE_URL` | The Postgres **Internal Database URL** from Step 1 | **Yes** |
 | `NODE_VERSION` | `22.14.0` (or any 20.9+ / 22 LTS) | Strongly recommended — pins the runtime |
 | `NEXT_PUBLIC_APP_URL` | `https://<your-service>.onrender.com` (update after first deploy, no trailing slash) | Recommended |
-| `AI_API_KEY` | Your Anthropic key for real LLM intent extraction (`src/lib/server/ai.ts`) | Optional — app falls back to a local heuristic when empty |
-| `SEARCH_API_KEY` / `NEWS_API_KEY` / `COMPANY_REGISTRY_API_KEY` | Reserved for future real connectors | Optional, leave unset |
+| `OPENROUTER_API_KEY` | Your OpenRouter key for real LLM intent extraction (`src/lib/server/ai.ts`) | Optional — app falls back to local NLP when empty |
+| `AI_MODEL` | OpenRouter model id (default `x-ai/grok-4.1-fast:free`, free) | Optional |
+| `AI_MODEL` already defaults to a free model — only change it if you want a specific OpenRouter model. No other keys needed. |
 
 Notes:
 
@@ -218,8 +219,10 @@ services:
           property: connectionString    # internal URL, same region
       - key: NEXT_PUBLIC_APP_URL
         value: https://datapilot.onrender.com  # edit to your real URL
-      - key: AI_API_KEY
-        sync: false                     # prompts for a secret at apply time
+      - key: OPENROUTER_API_KEY
+        sync: false                     # OpenRouter key, prompts for a secret at apply time
+      - key: AI_MODEL
+        value: x-ai/grok-4.1-fast:free
 
 databases:
   - name: datapilot-db
@@ -232,7 +235,7 @@ databases:
 > remix-postgres example). If you later upgrade to Starter, you can move
 > `npm run db:init` to `preDeployCommand` instead.
 
-> After applying the Blueprint, set `AI_API_KEY` (if used) and correct
+> After applying the Blueprint, set `OPENROUTER_API_KEY` (if used) and correct
 > `NEXT_PUBLIC_APP_URL` in the dashboard, then redeploy once.
 
 ## 10. Deploy checklist (copy/paste into your PR)
@@ -240,7 +243,7 @@ databases:
 - [ ] Postgres created in region R; Internal URL copied
 - [ ] Web Service created from `main`, same region R
 - [ ] Build `npm ci && npm run build`, Start `npm start`
-- [ ] Env vars set: `DATABASE_URL`, `NODE_VERSION=22.14.0`, `NEXT_PUBLIC_APP_URL`
+- [ ] Env vars set: `DATABASE_URL`, `NODE_VERSION=22.14.0`, `NEXT_PUBLIC_APP_URL`, `OPENROUTER_API_KEY` (+ optional `AI_MODEL`)
 - [ ] Pre-deploy `npm run db:init` set (or ran once via Shell)
 - [ ] `Connector` table has 7 rows; landing page loads; test task completes
 - [ ] Single instance (no autoscale > 1); Starter plan if you need no-sleep

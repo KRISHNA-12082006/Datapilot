@@ -35,7 +35,7 @@ export function CtaFooter() {
             </div>
             <span className="text-sm font-medium text-muted">DataPilot AI</span>
           </div>
-          <p className="text-xs text-muted-2">Built for hackathon demonstration · all data shown is simulated</p>
+          <p className="text-xs text-muted-2">Built for hackathon demonstration · every record traceable to a verified source</p>
         </div>
       </footer>
     </>

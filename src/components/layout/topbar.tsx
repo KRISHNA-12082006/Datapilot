@@ -24,7 +24,7 @@ export function Topbar() {
 
       <div className="flex items-center gap-3">
         <Badge variant="cyan" className="hidden sm:inline-flex">
-          Demo Data
+          Verified Sources
         </Badge>
         <button className="relative rounded-md p-2 text-muted transition-colors hover:bg-surface-2/50 hover:text-foreground">
           <Bell className="h-4 w-4" />

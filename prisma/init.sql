@@ -106,10 +106,10 @@ CREATE INDEX "Workflow_createdAt_idx" ON "Workflow" ("createdAt");
 
 -- Seed the connector catalog (mirrors src/lib/demo-engine.ts CONNECTORS)
 INSERT INTO "Connector" (id, name, type, status, reliability) VALUES
-  ('web-search', 'Web Search Index', 'web', 'active', 92),
-  ('company-registry', 'Company Registry API', 'api', 'active', 97),
-  ('news-feed', 'News & Press Feed', 'api', 'active', 88),
-  ('social-directory', 'Public Social Directory', 'web', 'active', 79),
+  ('web-search', 'Curated Web Index', 'web', 'active', 92),
+  ('company-registry', 'Company Directory', 'api', 'active', 97),
+  ('news-feed', 'Ecosystem Feed', 'api', 'active', 88),
+  ('social-directory', 'Public Directory', 'web', 'active', 79),
   ('csr-database', 'CSR / Sustainability DB', 'database', 'active', 94),
-  ('job-boards', 'Job Board Aggregator', 'api', 'active', 90),
+  ('job-boards', 'Startup & Tech Index', 'api', 'active', 90),
   ('csv-upload', 'Uploaded Files', 'file', 'idle', 100);

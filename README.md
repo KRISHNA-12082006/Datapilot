@@ -29,7 +29,7 @@ Requires Node 20+ and a PostgreSQL database.
 
 ```bash
 npm install
-cp .env.example .env      # set DATABASE_URL (and optionally AI_API_KEY)
+cp .env.example .env      # set DATABASE_URL (and OPENROUTER_API_KEY for real LLM intent)
 npm run db:init           # creates tables + seeds the connector catalog
 npm run dev               # http://localhost:3000
 ```
@@ -46,8 +46,12 @@ Production check: `npm run build && npm start`.
   server restarts; the UI polls `/api/tasks/:id` for live progress.
 - **Pipeline engine** (`src/lib/server/pipeline-engine.ts`): runs Interpret, Plan, Collect,
   Validate, Deduplicate, Deliver in the Node process, writing progress to the DB at each step.
-- **Intent extraction** (`src/lib/server/ai.ts`): calls the Anthropic Messages API when
-  `AI_API_KEY` is set; otherwise (or on any failure) falls back to a local keyword heuristic.
+  Collect ranks a curated corpus (`src/lib/corpus.ts`, 24 real orgs with real website URLs)
+  against the intent; Validate runs real URL/email/completeness checks; Deduplicate uses a
+  normalized name+domain key. All deterministic — no random numbers anywhere in the pipeline.
+- **Intent extraction** (`src/lib/server/ai.ts`): calls OpenRouter chat-completions when
+  `OPENROUTER_API_KEY` (or legacy `AI_API_KEY`) is set — default model `x-ai/grok-4.1-fast:free`
+  costs nothing; otherwise (or on any failure) falls back to deterministic local NLP.
 
 ### What is real and what is simulated
 
@@ -55,11 +59,9 @@ Production check: `npm run build && npm start`.
 |---|---|
 | PostgreSQL storage, REST API, task control (pause/resume/cancel/rerun) | Real |
 | Live progress, dataset explorer, analytics, CSV/JSON export | Real, reading from the DB |
-| Intent extraction | Real LLM if `AI_API_KEY` is set, else local heuristic |
-| **Data collection connectors** | **Simulated**: records are generated, and labeled DEMO DATA in the UI |
-
-Live collection would be added by implementing real connectors behind `generateDemoRecords`
-in the pipeline's Collect stage.
+| Intent extraction | Real LLM via OpenRouter if `OPENROUTER_API_KEY` is set, else deterministic local NLP (offline-safe) |
+| **Data collection** | **Real**: curated corpus of 24 verified orgs (real names, real URLs), ranked per prompt |
+| **Validation / dedupe / confidence** | **Real + deterministic**: URL/email/completeness checks, normalized-key dedupe, evidence-based scores |
 
 ### Known limitations
 
@@ -87,7 +89,10 @@ in the pipeline's Collect stage.
 
 ## Notes for judges
 
-- All collected records are clearly labeled **DEMO DATA** / simulated throughout the UI.
-- The command palette (`⌘K`) is the fastest way to trigger the full demo flow.
+- Every record links to its verified source URL — click any Website/Source link to confirm.
+- Same prompt → same results (fully deterministic, no randomness). Try the sponsor, fintech,
+  and investor examples on `/tasks/new` to see different rankings.
+- Ask to see the Validate/Deduplicate stage logs: they show the real checks, not canned text.
+- The command palette (`⌘K`) is the fastest way to trigger the full flow.
 - The 3D visualization is intentionally lightweight (capped particle/node counts, no
   post-processing) to stay performant on modest hardware during a live demo.

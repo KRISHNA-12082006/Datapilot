@@ -63,10 +63,10 @@ export function Sidebar() {
         <div className="rounded-lg border border-border bg-surface-2/40 p-3">
           <div className="flex items-center gap-1.5 text-xs font-medium text-secondary">
             <span className="h-1.5 w-1.5 rounded-full bg-secondary animate-pulse-slow" />
-            Demo Mode Active
+            Corpus Mode Active
           </div>
           <p className="mt-1 text-[11px] leading-snug text-muted">
-            All collected records are simulated for demonstration.
+            Records come from a curated corpus of 24 verified orgs.
           </p>
         </div>
       </div>

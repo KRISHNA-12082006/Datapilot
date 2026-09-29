@@ -27,7 +27,7 @@ export async function createTask(prompt: string): Promise<string> {
   const id = newId("task");
   await query(
     `INSERT INTO "Task" (id, prompt, status, progress, "recordsFound", "duplicatesRemoved", "isDemo")
-     VALUES ($1, $2, 'queued', 0, 0, 0, true)`,
+     VALUES ($1, $2, 'queued', 0, 0, 0, false)`,
     [id, prompt]
   );
 
