@@ -124,7 +124,11 @@ function runStage(taskId: string, prompt: string, stageIndex: number) {
 
 async function completeStage(taskId: string, prompt: string, stageIndex: number) {
   const stageId = STAGE_ORDER[stageIndex];
-  const state = runState.get(taskId) ?? { recordsFound: 0, duplicatesRemoved: 0, connectors: [] };
+  let state = runState.get(taskId);
+  if (!state) {
+    state = { raw: 0, validated: [], dropped: 0, duplicatesRemoved: 0, connectors: [] };
+    runState.set(taskId, state);
+  }
   const logs: string[] = [];
 
   if (stageId === "interpret") {
