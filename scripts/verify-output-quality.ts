@@ -82,7 +82,7 @@ const live = mapCrawlerRecordToSourceRecord(
     source: "https://example.com/feed",
     source_url: "https://example.com/articles/india-fintech-funding",
     scraped_at: "2026-09-29T10:00:00Z",
-    companies: ["Razorpay"],
+    companies: ["razorpay"],
     title: "Razorpay leads fintech funding round",
     text: "Razorpay raised a new round…",
   },
@@ -95,12 +95,56 @@ check("live record has a human source label", live.sourceName === "RSS Feeds", l
 check("live record enriches from corpus when the company is known", live.fields["Industry"] === "Fintech", String(live.fields["Industry"]));
 check("live record id is deterministic",
   mapCrawlerRecordToSourceRecord(
-    { platform: "rss", source: "https://example.com/feed", source_url: "https://example.com/articles/india-fintech-funding", scraped_at: "2026-09-29T10:00:00Z", companies: ["Razorpay"], title: "Razorpay leads fintech funding round", text: "x" },
+    { platform: "rss", source: "https://example.com/feed", source_url: "https://example.com/articles/india-fintech-funding", scraped_at: "2026-09-29T10:00:00Z", companies: ["razorpay"], title: "Razorpay leads fintech funding round", text: "x" },
     "task_1",
     liveIntent
   ).id === live.id
 );
 check("crawler text rides along as context (not as an asked column)", live.fields["Text"] !== undefined && !requested.includes("Text"));
+
+// 6. The crawler's `companies[]` is a *search keyword*, often a generic goal
+//    word. It must never be promoted to the row's Name.
+const genericKeywordGoal = "Find recent news about AI startup funding rounds in India";
+const newsIntent = { ...intent, goal: genericKeywordGoal, fields: ["Name", "Website"] };
+const withTitle = mapCrawlerRecordToSourceRecord(
+  {
+    platform: "rss",
+    source: "https://techcrunch.com/feed/",
+    source_url: "https://techcrunch.com/2026/09/28/peak-xv-seed/",
+    scraped_at: "2026-09-29",
+    companies: ["startup", "india"],
+    title: "Peak XV ups Surge seed investment ceiling",
+    text: "Peak XV ups Surge…",
+  },
+  "task_1",
+  newsIntent
+);
+check("headline wins over generic keyword as Name",
+  withTitle.fields["Name"] === "Peak XV ups Surge seed investment ceiling",
+  String(withTitle.fields["Name"])
+);
+check("Company only set when a keyword resolves to a corpus org",
+  withTitle.fields["Company"] === undefined,
+  String(withTitle.fields["Company"])
+);
+const noTitle = mapCrawlerRecordToSourceRecord(
+  {
+    platform: "bbcnews",
+    source: "https://bbc.com/news/technology",
+    source_url: "https://bbc.com/news/technology-abc",
+    scraped_at: "2026-09-29",
+    companies: ["startup"],
+    text: "Funding rounds in the technology sector slowed down this quarter across Europe.",
+  },
+  "task_1",
+  newsIntent
+);
+check("generic keyword never becomes Name when there is no headline",
+  !/^startup$/i.test(String(noTitle.fields["Name"])),
+  String(noTitle.fields["Name"])
+);
+check("provenance still points at the article, not the feed",
+  noTitle.sourceUrl === "https://bbc.com/news/technology-abc", noTitle.sourceUrl);
 
 console.log(results.join("\n"));
 const failed = results.filter((r) => r.startsWith("FAIL"));

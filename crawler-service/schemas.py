@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field, HttpUrl
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field
 from typing import List, Optional, Dict, Any, Literal, Mapping, Iterable
 from datetime import datetime
 from enum import Enum
@@ -24,8 +24,11 @@ class CrawlRequest(BaseModel):
 
 
 class ExtractedIntent(BaseModel):
+    # DataPilot (TypeScript) sends camelCase `entityType`; accept both spellings.
+    model_config = ConfigDict(populate_by_name=True)
+
     goal: str
-    entity_type: str
+    entity_type: str = Field(alias="entityType")
     location: Optional[str] = None
     industry: Optional[str] = None
     fields: List[str] = []
@@ -37,11 +40,17 @@ class SourceRecord(BaseModel):
     """Raw record from a crawler, before validation/dedup."""
     platform: str
     source: str  # URL or identifier
-    source_url: Optional[HttpUrl] = None
+    # Crawlers emit "url"; DataPilot reads "source_url". Accept both on input
+    # (empty string tolerated) and always serialize as source_url.
+    source_url: Optional[str] = Field(
+        default=None, validation_alias=AliasChoices("source_url", "url")
+    )
     scraped_at: str
     companies: List[str] = []
     query: Optional[str] = None
-    title: Optional[str] = None
+    # Google Play emits the app name as "product"; treat it as the record title
+    # so the row's Name is the app, not a keyword or a text snippet.
+    title: Optional[str] = Field(default=None, validation_alias=AliasChoices("title", "product"))
     text: str
     raw_metadata: Dict[str, Any] = {}
     confidence_hint: Optional[float] = None  # Crawler's own confidence

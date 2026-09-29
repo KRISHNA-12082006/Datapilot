@@ -53,19 +53,20 @@ async def collect(company_terms: CompanyTerms, logger, max_records: int = 50) ->
             feed = feedparser.parse(feed_url)
             for entry in feed.entries[:20]:
                 seed = clean_text(f"{entry.get('title', '')}. {entry.get('summary', '')}")
-                if not match_companies(seed, company_terms):
+                matched = match_companies(seed, company_terms)
+                if not matched:
                     continue
-                pending.append((feed_url, entry, seed))
+                pending.append((feed_url, entry, seed, matched))
         except Exception as exc:
             logger.warning("RSS feed failed %s: %s", feed_url, exc)
 
     async with await create_http_session(timeout=30) as session:
         article_texts = await asyncio.gather(
-            *[_fetch_article_text(session, entry.get("link", "")) for _, entry, _ in pending],
+            *[_fetch_article_text(session, entry.get("link", "")) for _, entry, _, _ in pending],
             return_exceptions=True,
         )
 
-    for (feed_url, entry, seed), article_text in zip(pending, article_texts):
+    for (feed_url, entry, seed, matched), article_text in zip(pending, article_texts):
         text = article_text if isinstance(article_text, str) and len(article_text) >= 200 else seed
         if len(text) < 40:
             continue
@@ -73,7 +74,11 @@ async def collect(company_terms: CompanyTerms, logger, max_records: int = 50) ->
             {
                 "platform": "rss",
                 "source": feed_url,
-                "url": entry.get("link", ""),
+                # Article-level URL + headline: without these the row's Name and
+                # provenance fell back to the raw feed URL.
+                "source_url": entry.get("link", ""),
+                "title": clean_text(entry.get("title", ""))[:200],
+                "companies": matched,
                 "scraped_at": today(),
                 "text": text,
             }

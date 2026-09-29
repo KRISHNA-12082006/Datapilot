@@ -118,6 +118,24 @@ function corpusLookup(company: string) {
 }
 
 /**
+ * The crawler's `companies[]` holds the *search keyword* that matched a page —
+ * frequently a generic goal word ("startup", "about"), never an entity name.
+ * Only a keyword that appears capitalized in the original question counts as a
+ * proper noun, and we keep the question's own casing for it.
+ */
+function properNounIn(keyword: string, goal: string): string {
+  if (!keyword || !goal) return "";
+  const escaped = keyword.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const found = new RegExp(`\\b${escaped}\\b`, "i").exec(goal);
+  if (!found || !/^[A-Z]/.test(found[0])) return "";
+  return found[0];
+}
+
+function stripEntities(s: string): string {
+  return s.replace(/&#\d+;/g, " ").replace(/&[a-z]+;/gi, " ").replace(/\s+/g, " ").trim();
+}
+
+/**
  * Map one crawler record onto exactly the columns the question asked for.
  *
  * Two rules make this trustworthy:
@@ -135,18 +153,25 @@ export function mapCrawlerRecordToSourceRecord(
   const requested = intent.fields.length > 0 ? intent.fields : ["Name", "Website"];
   const meta = (crawlerRecord.raw_metadata ?? {}) as Record<string, unknown>;
   const matched = crawlerRecord.companies.map(clean).filter(Boolean);
-  const primaryCompany = matched[0] ?? "";
 
-  // Name: the matched company, else the article/review headline (a real, checkable
-  // string) — never the placeholder "Unknown", which would sail past validation.
+  // Proper nouns actually named in the question, in the order they matched.
+  const entity = matched.map((c) => properNounIn(c, intent.goal)).find(Boolean) ?? "";
+
+  // Name priority: the page's own headline (specific + checkable), else a
+  // snippet of the crawled text, else a proper noun from the question — never a
+  // generic keyword like "startup", and never the placeholder "Unknown".
   const headline = clean(crawlerRecord.title);
-  const nameFallback = headline.length >= 4 ? headline.slice(0, 90) : clean(crawlerRecord.source);
+  const snippet = stripEntities(crawlerRecord.text ?? "").slice(0, 80);
+  const nameValue = headline || snippet || entity || clean(crawlerRecord.source);
 
-  const corpus = primaryCompany ? corpusLookup(primaryCompany) : undefined;
+  // Enrich from the curated corpus when any matched keyword resolves to a known org.
+  // A goal keyword that did not resolve is a *topic*, not the record's company —
+  // it never gets promoted to the Company column.
+  const corpus = matched.map(corpusLookup).find(Boolean);
 
   const evidence: Record<string, string | undefined> = {
-    Name: primaryCompany || nameFallback || undefined,
-    Company: primaryCompany || undefined,
+    Name: nameValue || undefined,
+    Company: corpus?.name || undefined,
     Website: clean(meta.website) || corpus?.website,
     Industry: clean(meta.industry) || corpus?.industry,
     Location: clean(meta.location) || corpus?.location,

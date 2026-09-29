@@ -25,6 +25,7 @@ async def collect(company_terms: CompanyTerms, logger, max_records: int = 50) ->
                             {
                                 "platform": "thehackernews",
                                 "source": url,
+                                "source_url": url,
                                 "scraped_at": today(),
                                 "companies": [company],
                                 "query": term,

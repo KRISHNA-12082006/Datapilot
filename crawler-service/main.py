@@ -72,7 +72,7 @@ async def health_check():
 
 @app.get("/platforms")
 async def list_platforms():
-    from .schemas import PLATFORM_CATEGORIES, PLATFORM_DISPLAY_NAMES
+    from schemas import PLATFORM_CATEGORIES, PLATFORM_DISPLAY_NAMES
     return {
         "platforms": [
             {
@@ -88,7 +88,7 @@ async def list_platforms():
 @app.post("/crawl", response_model=CrawlResponse)
 async def crawl(request: CrawlRequestWrapper):
     """Synchronous crawl endpoint - runs all collectors and returns results."""
-    from .schemas import CrawlRequest as SchemaCrawlRequest, ExtractedIntent, PlatformCategory
+    from schemas import CrawlRequest as SchemaCrawlRequest, ExtractedIntent, PlatformCategory
 
     # Convert dict to proper models
     intent = ExtractedIntent(**request.intent)
@@ -136,7 +136,7 @@ async def run_async_crawl(job_id: str, request: CrawlRequestWrapper):
     job.progress = 10
 
     try:
-        from .schemas import CrawlRequest as SchemaCrawlRequest, ExtractedIntent, PlatformCategory
+        from schemas import CrawlRequest as SchemaCrawlRequest, ExtractedIntent, PlatformCategory
 
         intent = ExtractedIntent(**request.intent)
         enabled_categories = None
