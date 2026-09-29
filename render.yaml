@@ -31,6 +31,27 @@ services:
         sync: false # OpenRouter key for real LLM intent extraction (free-tier model by default)
       - key: AI_MODEL
         value: x-ai/grok-4.1-fast:free # free; override with any OpenRouter model id
+      - key: CRAWLER_SERVICE_URL
+        value: https://datapilot-crawler.onrender.com # internal URL for crawler service
+
+  - type: web
+    name: datapilot-crawler
+    env: python
+    branch: main
+    plan: free
+    rootDir: crawler-service
+    buildCommand: pip install -r requirements.txt && playwright install chromium
+    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: datapilot-db
+          property: connectionString
+      - key: PLAYWRIGHT_HEADLESS
+        value: "true"
+      - key: LOG_LEVEL
+        value: "INFO"
 
 databases:
   - name: datapilot-db

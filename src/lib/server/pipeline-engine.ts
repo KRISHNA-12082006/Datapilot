@@ -1,7 +1,8 @@
-import type { SourceRecord, StageId } from "@/types";
+import type { SourceRecord, StageId, ExtractedIntent } from "@/types";
 import { CONNECTORS } from "@/lib/collection-engine";
 import {
   collectFromCorpus,
+  collectHybrid,
   dedupeRecords,
   planSourcesForIntent,
   recordConfidence,
@@ -41,11 +42,25 @@ const runState = new Map<
     dropped: number;
     duplicatesRemoved: number;
     connectors: string[];
+    liveMode?: boolean;
+    enabledCategories?: string[];
   }
 >();
 
-export function startPipeline(taskId: string, prompt: string) {
-  runState.set(taskId, { raw: 0, validated: [], dropped: 0, duplicatesRemoved: 0, connectors: [] });
+export function startPipeline(
+  taskId: string,
+  prompt: string,
+  options: { liveMode?: boolean; enabledCategories?: string[] } = {}
+) {
+  runState.set(taskId, {
+    raw: 0,
+    validated: [],
+    dropped: 0,
+    duplicatesRemoved: 0,
+    connectors: [],
+    liveMode: options.liveMode,
+    enabledCategories: options.enabledCategories,
+  });
   repo.setTaskStatus(taskId, "running").catch((e) => console.error("[pipeline] setTaskStatus failed", e));
   runStage(taskId, prompt, 0);
 }
@@ -65,12 +80,15 @@ export async function resumePipeline(taskId: string, prompt: string) {
   if (!task) return;
   const stageIndex = task.stages.findIndex((s) => s.status === "active" || s.status === "pending");
   if (!runState.has(taskId)) {
+    const state = runState.get(taskId);
     runState.set(taskId, {
       raw: task.recordsFound,
       validated: [],
       dropped: 0,
       duplicatesRemoved: task.duplicatesRemoved,
       connectors: task.connectors,
+      liveMode: state?.liveMode,
+      enabledCategories: state?.enabledCategories,
     });
   }
   runStage(taskId, prompt, Math.max(stageIndex, 0));
@@ -160,57 +178,115 @@ async function completeStage(taskId: string, prompt: string, stageIndex: number)
       state.raw = 0;
       state.validated = [];
     } else {
-      // REAL collection: rank the curated corpus against the intent, searching
-      // only the source layers the user has switched on.
       const enabled = await repo.listEnabledSourceIds();
-      const hits = collectFromCorpus(intent, enabled);
       const now = new Date().toISOString();
       const connectorNames = new Map(CONNECTORS.map((c) => [c.id, c.name]));
-      const records: SourceRecord[] = hits.map((h, i) => {
-        const fields: Record<string, string | number> = {};
-        let filled = 0;
-        for (const f of intent.fields) {
-          let v: string | number | undefined;
-          switch (f) {
-            case "Name": v = h.org.name; break;
-            case "Company": v = h.org.name; break;
-            case "Website": v = h.org.website; break;
-            case "Industry": v = h.org.industry; break;
-            case "Location": v = h.org.location; break;
-            case "Contact Email": v = h.org.contactEmail; break;
-            case "Phone": v = h.org.phone; break;
-            // A column the knowledge base cannot fill stays empty rather than
-            // being filled with something invented.
-            default: v = undefined;
-          }
-          if (v !== undefined && String(v).trim() !== "") {
-            fields[f] = v;
-            filled++;
-          } else {
-            fields[f] = "—";
-          }
+
+      // Check if live mode is enabled
+      const liveMode = state.liveMode === true;
+      const enabledCategories = state.enabledCategories;
+
+      let records: SourceRecord[] = [];
+
+      if (liveMode && enabledCategories && enabledCategories.length > 0) {
+        // HYBRID: corpus + live crawl
+        logs.push(`Live mode enabled — running hybrid collection (corpus + ${enabledCategories.join(", ")} crawlers)`);
+        try {
+          const { combined } = await collectHybrid(intent, {
+            enabledLayers: enabled,
+            enabledCategories: enabledCategories as any,
+            maxCorpusResults: 18,
+            maxLivePerPlatform: 50,
+            liveMode: true,
+          });
+          records = combined.map((r, i) => ({ ...r, taskId, id: r.id || `rec_${taskId.replace(/[^a-z0-9]/gi, "").slice(-6)}_${i}` }));
+          state.raw = records.length;
+
+          // Log breakdown
+          const corpusCount = records.filter(r => r.sourceName && !enabledCategories.includes(r.sourceName)).length;
+          const liveCount = records.length - corpusCount;
+          logs.push(
+            `Retrieved ${records.length} total records (corpus: ${corpusCount}, live: ${liveCount})`,
+            ...enabledCategories.map(cat => `+ Live category: ${cat}`)
+          );
+        } catch (err) {
+          logs.push(`Live crawl failed, falling back to corpus only: ${err instanceof Error ? err.message : "Unknown error"}`);
+          // Fallback to corpus only
+          const hits = collectFromCorpus(intent, enabled);
+          records = hits.map((h, i) => ({
+            id: `rec_${taskId.replace(/[^a-z0-9]/gi, "").slice(-6)}_${i}`,
+            taskId,
+            fields: (() => {
+              const fields: Record<string, string | number> = {};
+              for (const f of intent.fields) {
+                const v =
+                  f === "Name" || f === "Company" ? h.org.name
+                  : f === "Website" ? h.org.website
+                  : f === "Industry" ? h.org.industry
+                  : f === "Location" ? h.org.location
+                  : f === "Contact Email" ? h.org.contactEmail
+                  : f === "Phone" ? h.org.phone
+                  : "—";
+                fields[f] = v;
+              }
+              return fields;
+            })(),
+            confidence: recordConfidence(h.score, intent.fields.length, intent.fields.length),
+            sourceName: connectorNames.get(h.connectorId) ?? h.connectorId,
+            sourceUrl: h.org.website,
+            collectedAt: now,
+            flagged: false,
+          }));
+          state.raw = records.length;
         }
-        return {
-          id: `rec_${taskId.replace(/[^a-z0-9]/gi, "").slice(-6)}_${i}`,
-          taskId,
-          fields,
-          confidence: recordConfidence(h.score, filled, intent.fields.length),
-          sourceName: connectorNames.get(h.connectorId) ?? h.connectorId,
-          sourceUrl: h.org.website,
-          collectedAt: now,
-          flagged: false,
-        };
-      });
-      state.raw = records.length;
-      state.validated = records; // validate stage filters this down
-      const byConnector = new Map<string, number>();
-      for (const h of hits) byConnector.set(h.connectorId, (byConnector.get(h.connectorId) ?? 0) + 1);
-      logs.push(
-        `Retrieved ${records.length} candidate records from curated corpus`,
-        ...[...byConnector.entries()].map(
-          ([cid, n]) => `+ ${connectorNames.get(cid) ?? cid}: ${n} records`
-        )
-      );
+      } else {
+        // CORPUS ONLY (original deterministic mode)
+        const hits = collectFromCorpus(intent, enabled);
+        records = hits.map((h, i) => {
+          const fields: Record<string, string | number> = {};
+          let filled = 0;
+          for (const f of intent.fields) {
+            let v: string | number | undefined;
+            switch (f) {
+              case "Name": v = h.org.name; break;
+              case "Company": v = h.org.name; break;
+              case "Website": v = h.org.website; break;
+              case "Industry": v = h.org.industry; break;
+              case "Location": v = h.org.location; break;
+              case "Contact Email": v = h.org.contactEmail; break;
+              case "Phone": v = h.org.phone; break;
+              default: v = undefined;
+            }
+            if (v !== undefined && String(v).trim() !== "") {
+              fields[f] = v;
+              filled++;
+            } else {
+              fields[f] = "—";
+            }
+          }
+          return {
+            id: `rec_${taskId.replace(/[^a-z0-9]/gi, "").slice(-6)}_${i}`,
+            taskId,
+            fields,
+            confidence: recordConfidence(h.score, filled, intent.fields.length),
+            sourceName: connectorNames.get(h.connectorId) ?? h.connectorId,
+            sourceUrl: h.org.website,
+            collectedAt: now,
+            flagged: false,
+          };
+        });
+        state.raw = records.length;
+        const byConnector = new Map<string, number>();
+        for (const h of hits) byConnector.set(h.connectorId, (byConnector.get(h.connectorId) ?? 0) + 1);
+        logs.push(
+          `Retrieved ${records.length} candidate records from curated corpus`,
+          ...[...byConnector.entries()].map(
+            ([cid, n]) => `+ ${connectorNames.get(cid) ?? cid}: ${n} records`
+          )
+        );
+      }
+
+      state.validated = records;
     }
   } else if (stageId === "validate") {
     // REAL validation against the columns the question asked for. Only records

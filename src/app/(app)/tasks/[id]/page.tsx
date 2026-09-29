@@ -11,6 +11,9 @@ import {
   ArrowLeft,
   PartyPopper,
   Trash2,
+  Zap,
+  Globe,
+  Terminal,
 } from "lucide-react";
 import { api } from "@/lib/api";
 import { useAppStore } from "@/store/use-app-store";
@@ -135,6 +138,16 @@ export default function TaskDetailPage() {
               <TaskStatusBadge status={task.status} />
               <span className="text-xs text-muted-2">{formatRelativeTime(task.createdAt)}</span>
               <span className="font-mono text-[11px] text-muted-2">{task.id}</span>
+              {task.liveMode && (
+                <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">
+                  <Zap className="h-3 w-3" /> Live Mode
+                </span>
+              )}
+              {task.enabledCategories && task.enabledCategories.length > 0 && (
+                <span className="inline-flex items-center gap-1 rounded-full bg-accent/10 px-2 py-0.5 text-xs font-medium text-accent">
+                  <Globe className="h-3 w-3" /> {task.enabledCategories.join(", ")}
+                </span>
+              )}
             </div>
             <p className="mt-2 max-w-2xl text-sm text-foreground">{task.prompt}</p>
           </div>

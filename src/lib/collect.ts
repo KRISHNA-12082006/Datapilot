@@ -1,8 +1,16 @@
 // Real collection engine: scores the curated corpus against the extracted
 // intent, then validates + deduplicates with fully deterministic logic.
 // Every record returned here comes from CORPUS (real org, real website URL).
-import type { ExtractedIntent, SourceRecord } from "@/types";
+// Also supports live crawling via external crawler microservice.
+import type { ExtractedIntent, SourceRecord, CrawlerRecord } from "@/types";
 import { CORPUS, type CorpusOrg } from "@/lib/corpus";
+import {
+  startLiveCrawl,
+  mapCrawlerRecordToSourceRecord,
+  PLATFORM_CATEGORIES,
+  getPlatformsForCategories,
+  type PlatformCategory,
+} from "@/lib/crawler-client";
 
 function tokenize(s: string): string[] {
   return s.toLowerCase().replace(/[^a-z0-9\s]/g, " ").split(/\s+/).filter((w) => w.length > 2);
@@ -166,4 +174,131 @@ export function recordConfidence(score: number, fieldsFilled: number, fieldsTota
   const signal = Math.min(1, score / 14);
   const raw = 0.58 + 0.3 * signal + 0.08 * completeness;
   return Math.round(Math.min(0.96, Math.max(0.55, raw)) * 100) / 100;
+}
+
+// -- Live Crawling Integration ----------------------------------------------------
+// Calls external Python microservice for real-time web crawling
+
+export interface LiveCrawlOptions {
+  intent: ExtractedIntent;
+  enabledCategories?: PlatformCategory[];
+  maxRecordsPerPlatform?: number;
+  specificPlatforms?: string[];
+}
+
+export interface LiveCrawlResult {
+  records: SourceRecord[];
+  platformStats: Record<string, number>;
+  errors: Record<string, string>;
+  totalRecords: number;
+  durationMs: number;
+}
+
+/**
+ * Execute live crawl via crawler microservice and convert to SourceRecords.
+ * Returns corpus hits + live records, merged and deduplicated.
+ */
+export async function collectLive(
+  options: LiveCrawlOptions
+): Promise<LiveCrawlResult> {
+  const { intent, enabledCategories, maxRecordsPerPlatform = 50, specificPlatforms } = options;
+
+  let platforms = specificPlatforms;
+  if (!platforms && enabledCategories) {
+    platforms = getPlatformsForCategories(enabledCategories);
+  }
+
+  const crawlRequest = {
+    intent,
+    platforms,
+    max_records_per_platform: maxRecordsPerPlatform,
+    enabled_categories: enabledCategories,
+  };
+
+  const response = await startLiveCrawl(crawlRequest);
+
+  // Convert crawler records to SourceRecords
+  const sourceRecords: SourceRecord[] = response.records.map((cr) =>
+    mapCrawlerRecordToSourceRecord(cr, "", intent)
+  );
+
+  return {
+    records: sourceRecords,
+    platformStats: response.platform_stats,
+    errors: response.errors,
+    totalRecords: response.total_records,
+    durationMs: response.crawl_duration_ms,
+  };
+}
+
+/**
+ * Hybrid collection: corpus + live crawl, merged and deduplicated.
+ * This is the main entry point for the Collect stage when live mode is enabled.
+ */
+export async function collectHybrid(
+  intent: ExtractedIntent,
+  options: {
+    enabledLayers?: string[];           // corpus layers
+    enabledCategories?: PlatformCategory[]; // live categories
+    maxCorpusResults?: number;
+    maxLivePerPlatform?: number;
+    liveMode?: boolean;
+  } = {}
+): Promise<{ corpus: CorpusHit[]; live: SourceRecord[]; combined: SourceRecord[] }> {
+  const {
+    enabledLayers,
+    enabledCategories,
+    maxCorpusResults = 18,
+    maxLivePerPlatform = 50,
+    liveMode = false,
+  } = options;
+
+  // Always get corpus results (deterministic fallback)
+  const corpusHits = collectFromCorpus(intent, enabledLayers).slice(0, maxCorpusResults);
+
+  // Convert corpus hits to SourceRecords
+  const corpusRecords: SourceRecord[] = corpusHits.map((hit) => ({
+    id: `corpus_${hit.org.name.replace(/\s+/g, "_")}`,
+    taskId: "",
+    fields: {
+      Name: hit.org.name,
+      Company: hit.org.name,
+      Website: hit.org.website,
+      Industry: hit.org.industry,
+      Location: hit.org.location,
+      "Contact Email": hit.org.contactEmail,
+      Phone: hit.org.phone,
+    },
+    confidence: recordConfidence(hit.score, 6, 6),
+    sourceName: hit.connectorId,
+    sourceUrl: hit.org.website,
+    collectedAt: new Date().toISOString().split("T")[0],
+    flagged: false,
+  }));
+
+  let liveRecords: SourceRecord[] = [];
+  let platformStats: Record<string, number> = {};
+  let errors: Record<string, string> = {};
+
+  if (liveMode && enabledCategories && enabledCategories.length > 0) {
+    try {
+      const liveResult = await collectLive({
+        intent,
+        enabledCategories,
+        maxRecordsPerPlatform: maxLivePerPlatform,
+      });
+      liveRecords = liveResult.records;
+      platformStats = liveResult.platformStats;
+      errors = liveResult.errors;
+    } catch (err) {
+      console.error("[collectHybrid] Live crawl failed:", err);
+      errors["live_crawl"] = err instanceof Error ? err.message : "Unknown error";
+    }
+  }
+
+  // Merge and deduplicate
+  const combined = [...corpusRecords, ...liveRecords];
+  const { unique } = dedupeRecords(combined);
+
+  return { corpus: corpusHits, live: liveRecords, combined: unique };
 }

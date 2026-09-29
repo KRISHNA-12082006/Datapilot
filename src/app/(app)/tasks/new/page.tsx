@@ -3,13 +3,25 @@
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
-import { Sparkles, ArrowRight, Building2, Briefcase, Rocket, Leaf, ShieldCheck, Download, Mail } from "lucide-react";
+import {
+  Sparkles, ArrowRight, Building2, Briefcase, Rocket, Leaf, ShieldCheck, Download, Mail, Zap, Globe, Database, Star, MessageSquare, Terminal
+} from "lucide-react";
 import { useAppStore } from "@/store/use-app-store";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Card } from "@/components/ui/card";
+import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Switch } from "@/components/ui/switch";
 import { SAMPLE_PROMPT } from "@/lib/collection-engine";
 import { toast } from "sonner";
+
+const PLATFORM_CATEGORIES = {
+  news: { label: "News & Articles", icon: Globe, desc: "RSS feeds, BBC, Hacker News, TechMeme" },
+  reviews: { label: "Reviews & Ratings", icon: Star, desc: "Trustpilot, Google Play, App Store" },
+  social: { label: "Social & Discussions", icon: MessageSquare, desc: "Reddit, Hacker News comments" },
+  dev: { label: "Code & Dev Platforms", icon: Terminal, desc: "GitHub repositories" },
+} as const;
 
 const EXAMPLES = [
   {
@@ -47,15 +59,31 @@ const OUTCOMES = [
 export default function NewTaskPage() {
   const [prompt, setPrompt] = React.useState("");
   const [submitting, setSubmitting] = React.useState(false);
+  const [liveMode, setLiveMode] = React.useState(false);
+  const [enabledCategories, setEnabledCategories] = React.useState<("news" | "reviews" | "social" | "dev")[]>([]);
   const submitPrompt = useAppStore((s) => s.submitPrompt);
   const router = useRouter();
+
+  const toggleCategory = (cat: "news" | "reviews" | "social" | "dev") => {
+    setEnabledCategories(prev => prev.includes(cat) ? prev.filter(c => c !== cat) : [...prev, cat]);
+  };
 
   const handleSubmit = async (value?: string) => {
     const finalPrompt = (value ?? prompt).trim();
     if (!finalPrompt) return;
     setSubmitting(true);
     try {
-      const id = await submitPrompt(finalPrompt);
+      const res = await fetch("/api/tasks", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          prompt: finalPrompt,
+          liveMode,
+          enabledCategories: liveMode ? enabledCategories : [],
+        }),
+      });
+      if (!res.ok) throw new Error("Failed");
+      const { id } = await res.json();
       router.push(`/tasks/${id}`);
     } catch {
       setSubmitting(false);
@@ -86,12 +114,58 @@ export default function NewTaskPage() {
             if ((e.metaKey || e.ctrlKey) && e.key === "Enter") handleSubmit();
           }}
         />
+        
+        {/* Live Mode Toggle */}
+        <div className="mt-4 pt-4 border-t border-border">
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-2">
+              <Zap className="h-4 w-4 text-primary" />
+              <Label className="font-medium cursor-pointer">Live Mode (Beta)</Label>
+            </div>
+            <Switch
+              checked={liveMode}
+              onCheckedChange={setLiveMode}
+              aria-label="Enable live web crawling"
+            />
+          </div>
+          <p className="text-xs text-muted mb-3">
+            When enabled, DataPilot crawls live sources in real-time (news, reviews, social, dev platforms).
+            Takes longer but finds fresher data beyond the curated corpus.
+          </p>
+          
+          {liveMode && (
+            <div className="space-y-2">
+              <p className="text-xs font-medium text-muted">Select live data sources:</p>
+              <div className="grid grid-cols-2 gap-2">
+                {Object.entries(PLATFORM_CATEGORIES).map(([key, config]) => (
+                  <Label key={key} className="flex items-center gap-2 rounded-lg border border-border bg-surface/50 p-3 text-left cursor-pointer hover:bg-surface/90 transition-colors">
+                    <Checkbox
+                      checked={enabledCategories.includes(key as any)}
+                      onCheckedChange={() => toggleCategory(key as any)}
+                    />
+                    <div className="flex flex-col">
+                      <div className="flex items-center gap-1.5">
+                        <config.icon className="h-3.5 w-3.5 text-primary" />
+                        <span className="text-sm font-medium">{config.label}</span>
+                      </div>
+                      <span className="text-[11px] text-muted-2 ml-5">{config.desc}</span>
+                    </div>
+                  </Label>
+                ))}
+              </div>
+              {enabledCategories.length === 0 && (
+                <p className="text-xs text-warning">Select at least one category for live crawling</p>
+              )}
+            </div>
+          )}
+        </div>
+
         <div className="mt-4 flex items-center justify-between border-t border-border pt-4">
           <p className="text-xs text-muted">
             Ask for these columns: company name · website · industry · location · contact email · phone
           </p>
-          <Button variant="gradient" disabled={!prompt.trim() || submitting} onClick={() => handleSubmit()}>
-            Build my dataset <ArrowRight className="h-4 w-4" />
+          <Button variant="gradient" disabled={!prompt.trim() || submitting || (liveMode && enabledCategories.length === 0)} onClick={() => handleSubmit()}>
+            {liveMode ? "Launch live crawl" : "Build my dataset"} <ArrowRight className="h-4 w-4" />
           </Button>
         </div>
       </Card>
