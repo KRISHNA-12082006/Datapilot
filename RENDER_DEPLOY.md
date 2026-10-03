@@ -102,7 +102,7 @@ On the Web Service page -> **Environment** -> add these:
 | `NODE_VERSION` | `22.14.0` (or any 20.9+ / 22 LTS) | Strongly recommended — pins the runtime |
 | `NEXT_PUBLIC_APP_URL` | `https://<your-service>.onrender.com` (update after first deploy, no trailing slash) | Recommended |
 | `OPENROUTER_API_KEY` | Your OpenRouter key for real LLM intent extraction (`src/lib/server/ai.ts`) | Optional — app falls back to local NLP when empty |
-| `AI_MODEL` | OpenRouter model id (default `x-ai/grok-4.1-fast:free`, free) | Optional |
+| `AI_MODEL` | OpenRouter model id (default `poolside/laguna-s-2.1:free`, free) | Optional |
 | `AI_MODEL` already defaults to a free model — only change it if you want a specific OpenRouter model. No other keys needed. |
 
 Notes:
@@ -222,7 +222,7 @@ services:
       - key: OPENROUTER_API_KEY
         sync: false                     # OpenRouter key, prompts for a secret at apply time
       - key: AI_MODEL
-        value: x-ai/grok-4.1-fast:free
+        value: poolside/laguna-s-2.1:free
 
 databases:
   - name: datapilot-db

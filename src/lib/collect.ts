@@ -18,6 +18,15 @@ function tokenize(s: string): string[] {
 
 const STOP = new Set(["the", "and", "for", "with", "from", "that", "this", "are", "find", "include", "including", "company", "data", "need", "needs", "information", "collect", "focused", "based", "openings", "open", "early", "stage", "list", "top", "best", "new"]);
 
+const CITY_ALIASES: Record<string, string> = { bengaluru: "bangalore", gurgaon: "gurugram", bombay: "mumbai", "new delhi": "delhi" };
+
+/** "Bengaluru, India" / "bangalore" → "bangalore"; LLM intents often add a state or country. */
+function normalizeCity(loc?: string): string | undefined {
+  const city = loc?.split(",")[0].trim().toLowerCase();
+  if (!city) return undefined;
+  return CITY_ALIASES[city] ?? city;
+}
+
 function scoreOrg(org: CorpusOrg, intent: ExtractedIntent, keywords: Set<string>): number {
   let score = 0;
   const hay = `${org.name} ${org.industry} ${org.tags.join(" ")}`.toLowerCase();
@@ -57,9 +66,14 @@ export interface CorpusHit {
 export function collectFromCorpus(intent: ExtractedIntent, enabledLayers?: string[]): CorpusHit[] {
   const allowed = enabledLayers && enabledLayers.length > 0 ? new Set(enabledLayers) : null;
   const keywords = new Set(tokenize(intent.goal).filter((w) => !STOP.has(w)));
-  const scored: CorpusHit[] = CORPUS.filter((org) => !allowed || allowed.has(org.layer)).map(
-    (org) => ({ org, score: scoreOrg(org, intent, keywords), connectorId: org.layer })
-  );
+  // A named location is a hard filter. Every survivor is in that city, so the
+  // location bonus is dropped from scoring — otherwise any local org would
+  // count as a relevance match.
+  const city = normalizeCity(intent.location);
+  const scoringIntent = city ? { ...intent, location: undefined } : intent;
+  const scored: CorpusHit[] = CORPUS.filter(
+    (org) => (!allowed || allowed.has(org.layer)) && (!city || normalizeCity(org.location) === city)
+  ).map((org) => ({ org, score: scoreOrg(org, scoringIntent, keywords), connectorId: org.layer }));
   scored.sort((a, b) => b.score - a.score || a.org.name.localeCompare(b.org.name));
 
   // Everything with a signal, capped at 18; if that yields fewer than 6 rows the

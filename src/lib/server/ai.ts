@@ -17,9 +17,9 @@ Respond with ONLY a JSON object (no markdown, no prose) matching this exact shap
 prompt. Keep it concise.`;
 
 /** NVIDIA NIM (build.nvidia.com) — OpenAI-compatible chat completions. */
-const NVIDIA_DEFAULT_MODEL = "meta/llama-3.1-70b-instruct";
+const NVIDIA_DEFAULT_MODEL = "nvidia/nemotron-3-ultra-550b-a55b";
 /** OpenRouter — free-tier JSON-friendly default. */
-const OPENROUTER_DEFAULT_MODEL = "x-ai/grok-4.1-fast:free";
+const OPENROUTER_DEFAULT_MODEL = "poolside/laguna-s-2.1:free";
 
 type ProviderId = "nvidia" | "openrouter";
 
@@ -105,7 +105,7 @@ async function callChat(provider: Provider, prompt: string): Promise<string> {
         { role: "system", content: SYSTEM_PROMPT },
         { role: "user", content: prompt },
       ],
-      max_tokens: 500,
+      max_tokens: 1500, // reasoning models (nemotron-3) spend part of this before answering
       temperature: 0.1,
       // NOTE: no response_format — free-tier and NIM models differ on
       // json_object support; the fence cleanup below handles both.
@@ -149,7 +149,36 @@ function parseIntent(text: string, prompt: string): ExtractedIntent {
 
   // Guard: LLM must return at least a usable shape; else fall through.
   if (!intent.goal || intent.fields.length === 0) throw new Error("model returned unusable intent");
-  return intent;
+  return normalizeIntent(intent, prompt);
+}
+
+// The collect/validate stages key on the local NLP's exact column names and
+// entity types; LLMs phrase them freely ("Company Name", "Contact Information").
+const FIELD_ALIASES: [RegExp, string][] = [
+  [/^(company|organi[sz]ation|business|firm)?\s*name$|^company$|^organi[sz]ation$/i, "Name"],
+  [/website|url|homepage|domain/i, "Website"],
+  [/e-?mail|contact\s*info/i, "Contact Email"],
+  [/phone|mobile|contact\s*number/i, "Phone"],
+  [/industry|sector/i, "Industry"],
+  [/location|city|headquarters|^hq$|address/i, "Location"],
+];
+const ENTITY_TYPES = ["Organization", "Sponsor Lead", "Job Opening", "Investor", "Sales Lead", "Event"];
+
+function normalizeIntent(intent: ExtractedIntent, prompt: string): ExtractedIntent {
+  const fields = intent.fields.map((f) => FIELD_ALIASES.find(([re]) => re.test(f.trim()))?.[1] ?? f.trim());
+  // Every row needs a name to pass validation, so it is always the first column.
+  const deduped = Array.from(new Set(["Name", ...fields]));
+  const heuristic = extractIntentHeuristic(prompt);
+  // Location is a hard filter: keep it only if the prompt actually names it,
+  // so an inferred "India" can't silently empty the result.
+  const city = intent.location?.split(",")[0].trim();
+  const location = city && prompt.toLowerCase().includes(city.toLowerCase()) ? city : heuristic.location;
+  return {
+    ...intent,
+    fields: deduped,
+    location,
+    entityType: ENTITY_TYPES.includes(intent.entityType) ? intent.entityType : heuristic.entityType,
+  };
 }
 
 /**

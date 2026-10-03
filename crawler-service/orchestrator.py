@@ -1,3 +1,4 @@
+import asyncio
 import importlib
 import re
 import logging
@@ -42,9 +43,15 @@ REQUEST_WORDS = {
     "number", "numbers", "industry", "location", "data", "dataset", "info",
     "information", "leads", "lead", "near", "around", "within", "across",
     "say", "says", "think", "thinks", "users", "people", "does", "how", "why",
+    "saying", "review", "reviews", "sentiment", "opinion", "opinions", "feedback",
+    "mention", "mentions", "public", "perception", "reputation", "customer", "customers",
 }
 
 MAX_SUBJECTS = 4
+
+# Per-platform budget. Term building + this must stay under the 300s timeout
+# in src/lib/crawler-client.ts.
+PLATFORM_TIMEOUT_S = 180
 
 
 def extract_subjects(intent) -> List[str]:
@@ -132,17 +139,28 @@ async def run_crawl(request: CrawlRequest, logger: logging.Logger) -> CrawlRespo
     platform_stats = {}
     errors = {}
 
-    for platform, collect_func in collectors:
+    # Platforms run concurrently, each with its own time budget, so one slow
+    # site can't push the whole crawl past the Next.js client's 5-minute timeout.
+    async def run_one(platform: str, collect_func: CollectorFunc) -> None:
         try:
             logger.info(f"Starting {platform}...")
-            records = await collect_func(company_terms, logger, request.max_records_per_platform)
+            records = await asyncio.wait_for(
+                collect_func(company_terms, logger, request.max_records_per_platform),
+                timeout=PLATFORM_TIMEOUT_S,
+            )
             all_records.extend(records)
             platform_stats[platform] = len(records)
             logger.info(f"{platform} returned {len(records)} records")
+        except asyncio.TimeoutError:
+            logger.warning(f"{platform} timed out after {PLATFORM_TIMEOUT_S}s")
+            errors[platform] = f"timed out after {PLATFORM_TIMEOUT_S}s"
+            platform_stats[platform] = 0
         except Exception as exc:
             logger.exception(f"{platform} failed: {exc}")
             errors[platform] = str(exc)
             platform_stats[platform] = 0
+
+    await asyncio.gather(*(run_one(p, f) for p, f in collectors))
 
     duration_ms = int((time.time() - start_time) * 1000)
     logger.info(f"Crawl completed in {duration_ms}ms. Total records: {len(all_records)}")

@@ -9,6 +9,9 @@ export async function POST(_request: Request, { params }: { params: Promise<{ id
     if (!task) {
       return NextResponse.json({ error: "Task not found" }, { status: 404 });
     }
+    if (task.status !== "paused") {
+      return NextResponse.json({ error: `Cannot resume a ${task.status} task` }, { status: 409 });
+    }
     await resumePipeline(id, task.prompt);
     return NextResponse.json({ ok: true });
   } catch (err) {

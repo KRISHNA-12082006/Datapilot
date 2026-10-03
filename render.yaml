@@ -30,13 +30,13 @@ services:
       - key: NVIDIA_API_KEY
         sync: false # free NIM key from build.nvidia.com — preferred LLM for intent extraction
       - key: NVIDIA_MODEL
-        value: meta/llama-3.1-70b-instruct # override with any NIM chat model id
+        value: nvidia/nemotron-3-ultra-550b-a55b # override with any NIM chat model id
       - key: LLM_PROVIDER
         value: nvidia # priority order: nvidia, openrouter (both still fall back)
       - key: OPENROUTER_API_KEY
         sync: false # fallback OpenRouter key for real LLM intent extraction (free-tier model by default)
       - key: AI_MODEL
-        value: x-ai/grok-4.1-fast:free # free; override with any OpenRouter model id
+        value: poolside/laguna-s-2.1:free # free; override with any OpenRouter model id
       - key: CRAWLER_SERVICE_URL
         value: https://datapilot-crawler.onrender.com # internal URL for crawler service
 

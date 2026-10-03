@@ -63,7 +63,7 @@ async function main() {
   {
     const d = describeAI();
     check("NVIDIA key → provider is NVIDIA NIM", d.configured && d.provider === "NVIDIA NIM", d.model);
-    check("NVIDIA default model", d.model === "meta/llama-3.1-70b-instruct", d.model);
+    check("NVIDIA default model", d.model === "nvidia/nemotron-3-ultra-550b-a55b", d.model);
 
     const urls: string[] = [];
     stubFetch(async (url) => {
@@ -89,7 +89,7 @@ async function main() {
       return json(NIM_JSON.replaceAll("Pune", "Chennai"));
     });
     const r = await extractIntentAI("find EV makers in Chennai");
-    check("NIM 401 → OpenRouter fallback used", r.usedAI === true && r.model === "x-ai/grok-4.1-fast:free", `model=${r.model}`);
+    check("NIM 401 → OpenRouter fallback used", r.usedAI === true && r.model === "poolside/laguna-s-2.1:free", `model=${r.model}`);
     check("both providers attempted in order", urls.length === 2 && urls[0].includes("nvidia") && urls[1].includes("openrouter"), urls.join(" -> "));
     check("fallback reply parsed", r.intent.location === "Chennai", String(r.intent.location));
   }

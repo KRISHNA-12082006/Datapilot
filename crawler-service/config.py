@@ -2,6 +2,15 @@ from pydantic_settings import BaseSettings
 from typing import List, Optional
 import os
 
+from dotenv import load_dotenv
+
+# Load keys (NVIDIA_API_KEY, …) into os.environ, which utils.common.env() reads.
+# crawler-service/.env wins over the project-root .env shared with Next.js;
+# real environment variables win over both.
+_HERE = os.path.dirname(os.path.abspath(__file__))
+load_dotenv(os.path.join(_HERE, ".env"))
+load_dotenv(os.path.join(_HERE, "..", ".env"))
+
 
 class Settings(BaseSettings):
     # Service
@@ -46,6 +55,7 @@ class Settings(BaseSettings):
         env_file = ".env"
         env_file_encoding = "utf-8"
         case_sensitive = True
+        extra = "ignore"  # .env also holds keys this class doesn't declare
 
 
 settings = Settings()

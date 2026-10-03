@@ -79,8 +79,8 @@ Production check: `npm run build && npm start`.
   traced to a source URL. A column the knowledge base cannot fill is left empty (`—`), reported
   once in the stage log, and the row is flagged for review rather than silently discarded.
 - **Intent extraction** (`src/lib/server/ai.ts`): calls NVIDIA NIM chat-completions when
-  `NVIDIA_API_KEY` is set (free key from build.nvidia.com, default `meta/llama-3.1-70b-instruct`),
-  then OpenRouter (`OPENROUTER_API_KEY`/`AI_API_KEY`, default `x-ai/grok-4.1-fast:free`) as
+  `NVIDIA_API_KEY` is set (free key from build.nvidia.com, default `nvidia/nemotron-3-ultra-550b-a55b`),
+  then OpenRouter (`OPENROUTER_API_KEY`/`AI_API_KEY`, default `poolside/laguna-s-2.1:free`) as
   fallback — so one rate-limited free tier never blocks a request. `LLM_PROVIDER` pins the
   order. If every provider fails (or no key is set) it falls back to deterministic local NLP.
   `GET /api/config` reports which engine is live, without exposing any secret.

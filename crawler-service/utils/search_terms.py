@@ -66,7 +66,7 @@ async def terms_from_nim(company: str, limit: int = 20, logger: Optional[logging
         return []
 
     base_url = env("NVIDIA_NIM_BASE_URL", "https://integrate.api.nvidia.com/v1")
-    model = env("NVIDIA_NIM_MODEL", "meta/llama-3.1-70b-instruct")
+    model = env("NVIDIA_NIM_MODEL") or env("NVIDIA_MODEL") or "nvidia/nemotron-3-ultra-550b-a55b"
     url = f"{base_url.rstrip('/')}/chat/completions"
     prompt = (
         f"Return exactly {limit} recent, specific, relevant internet search terms for "
@@ -78,7 +78,7 @@ async def terms_from_nim(company: str, limit: int = 20, logger: Optional[logging
         "model": model,
         "messages": [{"role": "user", "content": prompt}],
         "temperature": 0.2,
-        "max_tokens": 700,
+        "max_tokens": 2000,  # reasoning models spend part of this before answering
     }
 
     try:
@@ -89,9 +89,13 @@ async def terms_from_nim(company: str, limit: int = 20, logger: Optional[logging
                         logger.warning("NIM term lookup failed for %s: HTTP %s", company, response.status)
                     return []
                 data = await response.json()
-        content = data["choices"][0]["message"]["content"]
+        content = data["choices"][0]["message"]["content"] or ""
         match = re.search(r"\[[\s\S]*\]", content)
-        terms = json.loads(match.group(0) if match else content)
+        try:
+            terms = json.loads(match.group(0) if match else content)
+        except json.JSONDecodeError:
+            # Output cut off mid-array: keep the items that did arrive complete.
+            terms = re.findall(r'"([^"\n]{3,})"', content)
         return _normalize_terms(company, [str(term) for term in terms], limit)
     except Exception as exc:
         if logger:
